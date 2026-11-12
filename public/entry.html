@@ -7,7 +7,21 @@
 <link rel="stylesheet" href="style.css">
 </head>
 <body>
-<header><h1>🧾 구매·지출 입력</h1><span></span></header>
+<header>
+  <h1>🧾 구매·지출 입력</h1>
+  <div class="header-right">
+    <span></span>
+    <div class="nav-wrap">
+      <button class="nav-btn" id="navBtn">☰</button>
+      <div class="nav-menu" id="navMenu" hidden>
+        <a href="/">🏠 홈</a>
+        <a href="/pos.html">🧾 계산대</a>
+        <a href="/entry.html" class="current">🧮 구매·지출 입력</a>
+        <a href="/admin">🛠️ 관리자</a>
+      </div>
+    </div>
+  </div>
+</header>
 
 <div class="form-card">
   <div class="field">
@@ -41,6 +55,14 @@
 <script>
   var category = null;
   document.getElementById('date').value = new Date().toISOString().slice(0, 10);
+
+  document.getElementById('navBtn').addEventListener('click', function (e) {
+    e.stopPropagation();
+    document.getElementById('navMenu').hidden = !document.getElementById('navMenu').hidden;
+  });
+  document.addEventListener('click', function () {
+    document.getElementById('navMenu').hidden = true;
+  });
 
   document.querySelectorAll('#categoryChips .chip').forEach(function (chip) {
     chip.addEventListener('click', function () {
