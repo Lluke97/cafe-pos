@@ -38,13 +38,13 @@
     <span class="emoji">🧾</span>
     <span><span class="label">계산대</span><br><span class="desc">메뉴 탭해서 주문·결제</span></span>
   </a>
-  <a class="home-link" href="/entry.html">
-    <span class="emoji">🧮</span>
-    <span><span class="label">구매·지출 입력</span><br><span class="desc">원재료/운영비/기타</span></span>
-  </a>
   <a class="home-link" href="/brew.html">
     <span class="emoji">🍵</span>
     <span><span class="label">브루 보드</span><br><span class="desc">들어온 주문 확인, 완료 체크</span></span>
+  </a>
+  <a class="home-link" href="/entry.html">
+    <span class="emoji">🧮</span>
+    <span><span class="label">구매·지출 입력</span><br><span class="desc">원재료/운영비/기타</span></span>
   </a>
   <a class="home-link" href="/admin">
     <span class="emoji">🛠️</span>
@@ -54,7 +54,7 @@
 <script>
   function tick() {
     var d = new Date();
-    document.getElementById('clock').textContent = String(d.getHours()).padStart(2, '0') + ':' + String(d.getMinutes()).padStart(2, '0');
+    document.getElementById('clock').textContent = window.cafeTime.hm(d);
   }
   tick(); setInterval(tick, 30000);
 </script>
