@@ -3,7 +3,7 @@
 <head>
 <meta charset="utf-8">
 <meta name="viewport" content="width=device-width, initial-scale=1, viewport-fit=cover">
-<title>카페 관리자</title>
+<title>주섬주섬 카페 관리자</title>
 <link rel="stylesheet" href="/style.css">
 <style>
   .hidden { display: none !important; }
@@ -13,7 +13,7 @@
 </style>
 </head>
 <body>
-<header><h1>🛠️ 카페 관리자</h1><span id="clock"></span></header>
+<header><h1>🛠️ 주섬주섬 카페 관리자</h1><span id="clock"></span></header>
 
 <div class="admin-tabs">
   <div class="tab active" data-tab="summary">요약</div>
@@ -31,7 +31,10 @@
 </section>
 
 <section id="tab-orders" class="admin-section hidden">
-  <div class="field" style="max-width:200px"><label>날짜 필터</label><input type="date" id="ordersDate"></div>
+  <div class="menu-form-row">
+    <div class="field" style="max-width:200px"><label>날짜 필터</label><input type="date" id="ordersDate"></div>
+    <button id="ordersCsvBtn" class="btn btn-secondary" style="flex:0 0 auto; padding:10px 16px;">⬇ 엑셀(CSV) 다운로드</button>
+  </div>
   <table class="admin-table">
     <thead><tr><th>시간</th><th>내역</th><th>결제</th><th>합계</th><th></th></tr></thead>
     <tbody id="ordersRows"></tbody>
@@ -39,7 +42,10 @@
 </section>
 
 <section id="tab-expenses" class="admin-section hidden">
-  <div class="field" style="max-width:200px"><label>날짜 필터</label><input type="date" id="expensesDate"></div>
+  <div class="menu-form-row">
+    <div class="field" style="max-width:200px"><label>날짜 필터</label><input type="date" id="expensesDate"></div>
+    <button id="expensesCsvBtn" class="btn btn-secondary" style="flex:0 0 auto; padding:10px 16px;">⬇ 엑셀(CSV) 다운로드</button>
+  </div>
   <table class="admin-table">
     <thead><tr><th>날짜</th><th>카테고리</th><th>금액</th><th>메모</th><th>작성자</th><th></th></tr></thead>
     <tbody id="expensesRows"></tbody>
@@ -99,11 +105,50 @@
     }).join('') || '<tr><td colspan="4">데이터 없음</td></tr>';
   }
 
+  // ---------- CSV export ----------
+  function downloadCsv(filename, rows) {
+    // rows: array of arrays (first row = header). Excel opens UTF-8 CSV fine with a BOM.
+    var csv = rows.map(function (row) {
+      return row.map(function (cell) {
+        var s = String(cell == null ? '' : cell);
+        if (/[",\n]/.test(s)) s = '"' + s.replace(/"/g, '""') + '"';
+        return s;
+      }).join(',');
+    }).join('\r\n');
+    var blob = new Blob(['\uFEFF' + csv], { type: 'text/csv;charset=utf-8;' });
+    var url = URL.createObjectURL(blob);
+    var a = document.createElement('a');
+    a.href = url; a.download = filename;
+    document.body.appendChild(a); a.click(); document.body.removeChild(a);
+    URL.revokeObjectURL(url);
+  }
+
+  var lastOrders = [];
+  var lastExpenses = [];
+
+  document.getElementById('ordersCsvBtn').addEventListener('click', function () {
+    var rows = [['날짜', '시간', '내역', '결제수단', '합계(RM)']];
+    lastOrders.forEach(function (o) {
+      var desc = o.items.map(function (i) { return i.name + ' x' + i.qty; }).join(', ');
+      rows.push([o.createdAt.slice(0, 10), o.createdAt.slice(11, 16), desc, o.pay || '', o.total]);
+    });
+    downloadCsv('주문내역_' + new Date().toISOString().slice(0, 10) + '.csv', rows);
+  });
+
+  document.getElementById('expensesCsvBtn').addEventListener('click', function () {
+    var rows = [['날짜', '카테고리', '금액(RM)', '메모', '작성자']];
+    lastExpenses.forEach(function (e) {
+      rows.push([e.date, e.category, e.amount, e.memo || '', e.author || '']);
+    });
+    downloadCsv('구매지출내역_' + new Date().toISOString().slice(0, 10) + '.csv', rows);
+  });
+
   // ---------- Orders ----------
   async function loadOrders() {
     var dateVal = document.getElementById('ordersDate').value;
     var qs = dateVal ? ('?date=' + dateVal) : '';
     var orders = await api('/api/admin/orders' + qs);
+    lastOrders = orders;
     document.getElementById('ordersRows').innerHTML = orders.map(function (o) {
       var desc = o.items.map(function (i) { return i.name + ' x' + i.qty; }).join(', ');
       var time = o.createdAt.slice(11, 16);
@@ -125,6 +170,7 @@
     var dateVal = document.getElementById('expensesDate').value;
     var qs = dateVal ? ('?date=' + dateVal) : '';
     var expenses = await api('/api/admin/expenses' + qs);
+    lastExpenses = expenses;
     document.getElementById('expensesRows').innerHTML = expenses.map(function (e) {
       return '<tr><td>' + e.date + '</td><td>' + e.category + '</td><td>' + fmt(e.amount) + '</td><td>' + (e.memo || '-') + '</td><td>' + (e.author || '-') + '</td>' +
         '<td><button class="btn-small btn-danger" data-id="' + e.id + '">삭제</button></td></tr>';
