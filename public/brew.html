@@ -1,0 +1,179 @@
+<!doctype html>
+<html lang="ko">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1, maximum-scale=1, user-scalable=no, viewport-fit=cover">
+<title>브루 보드</title>
+<link rel="manifest" href="/manifest.json">
+<meta name="theme-color" content="#7a4a2b">
+<meta name="apple-mobile-web-app-capable" content="yes">
+<meta name="apple-mobile-web-app-status-bar-style" content="black-translucent">
+<meta name="apple-mobile-web-app-title" content="브루 보드">
+<link rel="apple-touch-icon" href="/icons/apple-touch-icon.png">
+<link rel="icon" href="/icons/icon-192.png">
+<link rel="stylesheet" href="style.css">
+<script src="theme.js"></script>
+<style>
+  main { padding: 14px; max-width: 980px; margin: 0 auto; }
+  .board-grid {
+    display: grid; grid-template-columns: repeat(auto-fill, minmax(230px, 1fr)); gap: 12px;
+  }
+  .order-card {
+    background: var(--surface); border: 1px solid var(--border); border-radius: 16px;
+    padding: 14px; box-shadow: var(--shadow); cursor: pointer; -webkit-tap-highlight-color: transparent;
+    transition: opacity .15s ease, transform .1s ease;
+  }
+  .order-card:active { transform: scale(0.98); }
+  .order-card.done { opacity: .4; }
+  .order-top { display: flex; justify-content: space-between; align-items: baseline; margin-bottom: 8px; }
+  .order-time { font-size: 20px; font-weight: 700; font-variant-numeric: tabular-nums; }
+  .order-elapsed { font-size: 12px; color: var(--text-muted); }
+  .order-items { list-style: none; margin: 0; padding: 0; }
+  .order-items li { font-size: 17px; font-weight: 600; padding: 4px 0; display: flex; justify-content: space-between; gap: 8px; }
+  .order-items li .qty { color: var(--accent); font-weight: 800; }
+  .order-pay { margin-top: 8px; font-size: 12px; color: var(--text-muted); }
+  .order-done-badge {
+    margin-top: 10px; text-align: center; font-size: 13px; font-weight: 700;
+    padding: 6px; border-radius: 8px; background: var(--surface-2); color: var(--text-muted);
+  }
+  .order-card:not(.done) .order-done-badge { background: var(--accent); color: var(--accent-contrast); }
+  .board-empty { color: var(--text-muted); text-align: center; padding: 60px 0; font-size: 15px; }
+  .board-toolbar { display: flex; justify-content: space-between; align-items: center; margin-bottom: 14px; }
+  .board-toolbar .chip {
+    padding: 8px 14px; border-radius: 999px; border: 1px solid var(--border); background: var(--surface);
+    font-size: 13px; font-weight: 600; cursor: pointer; color: var(--text-muted);
+  }
+  .board-toolbar .chip.selected { background: var(--accent); border-color: var(--accent); color: var(--accent-contrast); }
+</style>
+</head>
+<body>
+<header>
+  <h1>☕ 브루 보드</h1>
+  <div class="header-right">
+    <span id="clock"></span>
+    <button id="themeBtn" title="테마 변경">🌓</button>
+    <div class="nav-wrap">
+      <button class="nav-btn" id="navBtn">☰</button>
+      <div class="nav-menu" id="navMenu" hidden>
+        <a href="/">🏠 홈</a>
+        <a href="/pos.html">🧾 계산대</a>
+        <a href="/entry.html">🧮 구매·지출 입력</a>
+        <a href="/brew.html" class="current">🍵 브루 보드</a>
+        <a href="/admin">🛠️ 관리자</a>
+      </div>
+    </div>
+  </div>
+</header>
+
+<main>
+  <div class="board-toolbar">
+    <span style="font-size:13px; color:var(--text-muted);">탭하면 완료 처리돼요</span>
+    <div class="chip" id="showDoneChip">완료된 주문도 보기</div>
+  </div>
+  <div class="board-grid" id="board"></div>
+</main>
+
+<script>
+  var orders = [];
+  var showDone = false;
+
+  function renderClock() {
+    var d = new Date();
+    document.getElementById('clock').textContent = String(d.getHours()).padStart(2, '0') + ':' + String(d.getMinutes()).padStart(2, '0');
+  }
+
+  function elapsedLabel(createdAt) {
+    var ms = Date.now() - new Date(createdAt).getTime();
+    var min = Math.max(0, Math.floor(ms / 60000));
+    return min <= 0 ? '방금' : min + '분 전';
+  }
+
+  function render() {
+    var board = document.getElementById('board');
+    var visible = orders.filter(function (o) { return showDone || o.status !== 'done'; });
+    // oldest first: staff prep in order received
+    visible.sort(function (a, b) { return a.createdAt.localeCompare(b.createdAt); });
+
+    if (visible.length === 0) {
+      board.innerHTML = '<div class="board-empty">지금은 들어온 주문이 없어요 ☕</div>';
+      return;
+    }
+
+    board.innerHTML = visible.map(function (o) {
+      return '<div class="order-card' + (o.status === 'done' ? ' done' : '') + '" data-id="' + o.id + '" data-status="' + o.status + '">' +
+        '<div class="order-top"><span class="order-time"></span><span class="order-elapsed"></span></div>' +
+        '<ul class="order-items"></ul>' +
+        (o.pay ? '<div class="order-pay"></div>' : '') +
+        '<div class="order-done-badge"></div>' +
+        '</div>';
+    }).join('');
+
+    var cards = board.querySelectorAll('.order-card');
+    visible.forEach(function (o, i) {
+      var card = cards[i];
+      card.querySelector('.order-time').textContent = o.createdAt.slice(11, 16);
+      card.querySelector('.order-elapsed').textContent = elapsedLabel(o.createdAt);
+      var ul = card.querySelector('.order-items');
+      o.items.forEach(function (it) {
+        var li = document.createElement('li');
+        var name = document.createElement('span');
+        name.textContent = it.name;
+        var qty = document.createElement('span');
+        qty.className = 'qty';
+        qty.textContent = 'x' + it.qty;
+        li.appendChild(name);
+        li.appendChild(qty);
+        ul.appendChild(li);
+      });
+      if (o.pay) card.querySelector('.order-pay').textContent = o.pay;
+      card.querySelector('.order-done-badge').textContent = o.status === 'done' ? '완료됨 (다시 탭하면 취소)' : '탭해서 완료 처리';
+      card.addEventListener('click', function () { toggleStatus(o); });
+    });
+  }
+
+  async function toggleStatus(o) {
+    var next = o.status === 'done' ? 'new' : 'done';
+    o.status = next; // optimistic update
+    render();
+    try {
+      await fetch('/api/orders/' + o.id + '/status', {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ status: next })
+      });
+    } catch (e) {
+      // best effort; next poll will reconcile
+    }
+  }
+
+  async function load() {
+    try {
+      var res = await fetch('/api/orders?limit=100');
+      orders = await res.json();
+      render();
+    } catch (e) {
+      // keep showing last known state
+    }
+  }
+
+  document.getElementById('showDoneChip').addEventListener('click', function () {
+    showDone = !showDone;
+    this.classList.toggle('selected', showDone);
+    render();
+  });
+
+  document.getElementById('navBtn').addEventListener('click', function (e) {
+    e.stopPropagation();
+    document.getElementById('navMenu').hidden = !document.getElementById('navMenu').hidden;
+  });
+  document.addEventListener('click', function () {
+    document.getElementById('navMenu').hidden = true;
+  });
+
+  renderClock();
+  setInterval(renderClock, 30000);
+  load();
+  setInterval(load, 3000);
+</script>
+</body>
+</html>
