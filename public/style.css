@@ -129,21 +129,21 @@ header span { font-size: 12px; opacity: .85; }
 }
 .toast.error { background: var(--danger); }
 
-/* ---- recent-orders overlay on the till screen ---- */
-.recent-overlay {
-  position: fixed; inset: 0; z-index: 20;
-  background: rgba(0,0,0,.4);
-  display: flex; align-items: flex-end; justify-content: center;
+/* ---- top-level tabs on the till screen: 새 주문 / 오늘 주문 ---- */
+.main-tabs { display: flex; gap: 8px; padding: 12px 14px 0; }
+.main-tab {
+  padding: 9px 16px; border-radius: 999px; border: 1px solid var(--border);
+  background: var(--surface); font-size: 13px; font-weight: 700; cursor: pointer;
+  -webkit-tap-highlight-color: transparent; color: var(--text-muted);
 }
-@media (min-width: 760px) { .recent-overlay { align-items: center; } }
-.recent-panel {
-  background: var(--surface); width: 100%; max-width: 480px; max-height: 80vh;
-  border-radius: 16px 16px 0 0; display: flex; flex-direction: column; overflow: hidden;
-}
-@media (min-width: 760px) { .recent-panel { border-radius: 16px; max-height: 70vh; } }
+.main-tab.active { background: var(--accent); border-color: var(--accent); color: var(--accent-contrast); }
+
+/* ---- 오늘 주문 history view ---- */
+#view-history { padding: 14px; max-width: 640px; margin: 0 auto; }
+.recent-panel { background: var(--surface); border: 1px solid var(--border); border-radius: 14px; overflow: hidden; }
 .recent-head { padding: 14px 16px; border-bottom: 1px solid var(--border); display: flex; align-items: center; justify-content: space-between; }
 .recent-head h2 { margin: 0; font-size: 15px; font-weight: 700; }
-.recent-body { padding: 10px 16px 16px; overflow-y: auto; }
+.recent-body { padding: 10px 16px 16px; max-height: 70vh; overflow-y: auto; }
 .recent-row { padding: 10px 0; border-bottom: 1px dashed var(--border); }
 .recent-row .top { display: flex; justify-content: space-between; font-size: 13px; font-weight: 600; }
 .recent-row .desc { font-size: 12px; color: var(--text-muted); margin-top: 2px; }
