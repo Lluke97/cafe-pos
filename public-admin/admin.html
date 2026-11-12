@@ -88,7 +88,7 @@
     <button id="ordersCsvBtn" class="btn btn-secondary" style="flex:0 0 auto; padding:10px 16px;">⬇ 엑셀(CSV) 다운로드</button>
   </div>
   <table class="admin-table">
-    <thead><tr><th>시간</th><th>내역</th><th>결제</th><th>합계</th><th></th></tr></thead>
+    <thead><tr><th>시간</th><th>내역</th><th>결제</th><th>기기</th><th>합계</th><th></th></tr></thead>
     <tbody id="ordersRows"></tbody>
   </table>
 </section>
@@ -275,10 +275,13 @@
   var lastExpenses = [];
 
   document.getElementById('ordersCsvBtn').addEventListener('click', function () {
-    var rows = [['날짜', '시간', '내역', '결제수단', '합계(RM)']];
+    var rows = [['날짜', '시간', '전체 타임스탬프(UTC)', '내역', '결제수단', '기기', '합계(RM)', '상태']];
     lastOrders.forEach(function (o) {
       var desc = o.items.map(function (i) { return i.name + ' x' + i.qty; }).join(', ');
-      rows.push([o.createdAt.slice(0, 10), o.createdAt.slice(11, 19), desc, o.pay || '', o.total]);
+      rows.push([
+        o.createdAt.slice(0, 10), o.createdAt.slice(11, 19), o.createdAt,
+        desc, o.pay || '', o.device || '', o.total, o.status || ''
+      ]);
     });
     downloadCsv('주문내역_' + new Date().toISOString().slice(0, 10) + '.csv', rows);
   });
@@ -300,9 +303,9 @@
     document.getElementById('ordersRows').innerHTML = orders.map(function (o) {
       var desc = o.items.map(function (i) { return i.name + ' x' + i.qty; }).join(', ');
       var time = o.createdAt.slice(11, 19);
-      return '<tr><td>' + time + '</td><td>' + desc + '</td><td>' + (o.pay || '-') + '</td><td>' + fmt(o.total) + '</td>' +
+      return '<tr><td>' + time + '</td><td>' + desc + '</td><td>' + (o.pay || '-') + '</td><td>' + (o.device || '-') + '</td><td>' + fmt(o.total) + '</td>' +
         '<td><button class="btn-small btn-danger" data-id="' + o.id + '">삭제</button></td></tr>';
-    }).join('') || '<tr><td colspan="5">주문 없음</td></tr>';
+    }).join('') || '<tr><td colspan="6">주문 없음</td></tr>';
     document.querySelectorAll('#ordersRows button').forEach(function (b) {
       b.addEventListener('click', async function () {
         if (!confirm('이 주문을 삭제할까요?')) return;
