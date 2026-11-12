@@ -246,7 +246,7 @@
     var rows = [['날짜', '시간', '내역', '결제수단', '합계(RM)']];
     lastOrders.forEach(function (o) {
       var desc = o.items.map(function (i) { return i.name + ' x' + i.qty; }).join(', ');
-      rows.push([o.createdAt.slice(0, 10), o.createdAt.slice(11, 16), desc, o.pay || '', o.total]);
+      rows.push([o.createdAt.slice(0, 10), o.createdAt.slice(11, 19), desc, o.pay || '', o.total]);
     });
     downloadCsv('주문내역_' + new Date().toISOString().slice(0, 10) + '.csv', rows);
   });
@@ -267,7 +267,7 @@
     lastOrders = orders;
     document.getElementById('ordersRows').innerHTML = orders.map(function (o) {
       var desc = o.items.map(function (i) { return i.name + ' x' + i.qty; }).join(', ');
-      var time = o.createdAt.slice(11, 16);
+      var time = o.createdAt.slice(11, 19);
       return '<tr><td>' + time + '</td><td>' + desc + '</td><td>' + (o.pay || '-') + '</td><td>' + fmt(o.total) + '</td>' +
         '<td><button class="btn-small btn-danger" data-id="' + o.id + '">삭제</button></td></tr>';
     }).join('') || '<tr><td colspan="5">주문 없음</td></tr>';
