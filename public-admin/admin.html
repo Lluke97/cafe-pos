@@ -22,7 +22,21 @@
 </style>
 </head>
 <body>
-<header><h1>🛠️ 주섬주섬 카페 관리자</h1><span id="clock"></span></header>
+<header>
+  <h1>🛠️ 주섬주섬 카페 관리자</h1>
+  <div class="header-right">
+    <span id="clock"></span>
+    <div class="nav-wrap">
+      <button class="nav-btn" id="navBtn">☰</button>
+      <div class="nav-menu" id="navMenu" hidden>
+        <a href="/">🏠 홈</a>
+        <a href="/pos.html">🧾 계산대</a>
+        <a href="/entry.html">🧮 구매·지출 입력</a>
+        <a href="/admin" class="current">🛠️ 관리자</a>
+      </div>
+    </div>
+  </div>
+</header>
 
 <div class="admin-tabs">
   <div class="tab active" data-tab="summary">요약</div>
@@ -103,6 +117,14 @@
     document.getElementById('clock').textContent = String(d.getHours()).padStart(2, '0') + ':' + String(d.getMinutes()).padStart(2, '0');
   }
   renderClock(); setInterval(renderClock, 30000);
+
+  document.getElementById('navBtn').addEventListener('click', function (e) {
+    e.stopPropagation();
+    document.getElementById('navMenu').hidden = !document.getElementById('navMenu').hidden;
+  });
+  document.addEventListener('click', function () {
+    document.getElementById('navMenu').hidden = true;
+  });
 
   document.querySelectorAll('.admin-tabs .tab').forEach(function (tab) {
     tab.addEventListener('click', function () {
