@@ -75,13 +75,34 @@
 </div>
 
 <script>
-  // Each till can be labeled once (e.g. "카운터1") so the admin page can
-  // tell which device an order came from. Stored per-device in localStorage.
+  // Each till is auto-labeled from its browser/OS (e.g. "iPad", "Galaxy Tab")
+  // so the admin page can tell devices apart with no setup. A short random
+  // tag is added so two of the same model still show up as different tills.
+  // Stored in localStorage so the same device keeps its name across visits;
+  // tap the 📍 label in the header any time to rename it by hand instead.
+  function detectDeviceModel() {
+    var ua = navigator.userAgent || '';
+    if (/iPad/.test(ua) || (navigator.platform === 'MacIntel' && navigator.maxTouchPoints > 1)) return 'iPad';
+    if (/iPhone/.test(ua)) return 'iPhone';
+    if (/Android/.test(ua)) {
+      var m = ua.match(/Android\s[^;]+;\s*([^)]+)\)/);
+      if (m && m[1]) {
+        var model = m[1].split('Build')[0].trim();
+        if (/SM-T|Tab/i.test(model)) return 'Galaxy Tab';
+        if (model) return model;
+      }
+      return 'Android 기기';
+    }
+    if (/Macintosh/.test(ua)) return 'Mac';
+    if (/Windows/.test(ua)) return 'Windows PC';
+    return '기기';
+  }
   function getDeviceName() {
     var KEY = 'cafe-device-name';
     var name = localStorage.getItem(KEY);
     if (!name) {
-      name = (window.prompt('이 기기 이름을 입력해주세요 (예: 카운터1)', '카운터1') || '').trim() || '이름없는 기기';
+      var tag = Math.random().toString(36).slice(2, 6);
+      name = detectDeviceModel() + ' #' + tag;
       localStorage.setItem(KEY, name);
     }
     return name;
