@@ -9,41 +9,45 @@
 <body>
 <header>
   <h1>☕ 주섬주섬 카페</h1>
-  <div style="display:flex; align-items:center; gap:12px;">
-    <span id="recentBtn" style="cursor:pointer; font-size:12px; text-decoration:underline;">📋 오늘 주문</span>
-    <span id="clock"></span>
-  </div>
+  <span id="clock"></span>
 </header>
 
-<div id="recentOverlay" class="recent-overlay" hidden>
-  <div class="recent-panel">
-    <div class="recent-head">
-      <h2>오늘 주문 내역</h2>
-      <span id="recentClose" class="clear">닫기 ✕</span>
+<div class="main-tabs">
+  <div class="main-tab active" data-view="order">🧾 새 주문</div>
+  <div class="main-tab" data-view="history">📋 오늘 주문</div>
+</div>
+
+<div id="view-order">
+  <div class="layout">
+    <div class="left">
+      <div class="grid" id="grid"></div>
     </div>
-    <div class="recent-body" id="recentBody"></div>
+
+    <div class="right">
+      <div class="ticket-head">
+        <h2>주문 내역</h2>
+        <span class="clear" id="clearBtn">비우기</span>
+      </div>
+      <div class="ticket-body" id="ticketBody"></div>
+      <div class="ticket-foot">
+        <div class="sum-row total"><span>합계</span><span id="totalValue">RM0.00</span></div>
+        <div class="pay-row" id="payRow"></div>
+        <div class="action-row">
+          <button id="submitBtn" class="btn btn-primary">제출</button>
+        </div>
+        <div id="toast" class="toast" hidden></div>
+      </div>
+    </div>
   </div>
 </div>
 
-<div class="layout">
-  <div class="left">
-    <div class="grid" id="grid"></div>
-  </div>
-
-  <div class="right">
-    <div class="ticket-head">
-      <h2>주문 내역</h2>
-      <span class="clear" id="clearBtn">비우기</span>
+<div id="view-history" hidden>
+  <div class="recent-panel">
+    <div class="recent-head">
+      <h2>오늘 주문 내역</h2>
+      <span id="recentRefresh" class="clear">새로고침 ↻</span>
     </div>
-    <div class="ticket-body" id="ticketBody"></div>
-    <div class="ticket-foot">
-      <div class="sum-row total"><span>합계</span><span id="totalValue">RM0.00</span></div>
-      <div class="pay-row" id="payRow"></div>
-      <div class="action-row">
-        <button id="submitBtn" class="btn btn-primary">제출</button>
-      </div>
-      <div id="toast" class="toast" hidden></div>
-    </div>
+    <div class="recent-body" id="recentBody"></div>
   </div>
 </div>
 
@@ -195,10 +199,8 @@
   });
   document.getElementById('submitBtn').addEventListener('click', submitOrder);
 
-  async function openRecent() {
-    var overlay = document.getElementById('recentOverlay');
+  async function loadRecent() {
     var body = document.getElementById('recentBody');
-    overlay.hidden = false;
     body.innerHTML = '<div class="recent-empty">불러오는 중...</div>';
     try {
       var res = await fetch('/api/orders?limit=50');
@@ -221,9 +223,17 @@
       body.innerHTML = '<div class="recent-empty">불러오지 못했어요</div>';
     }
   }
-  document.getElementById('recentBtn').addEventListener('click', openRecent);
-  document.getElementById('recentClose').addEventListener('click', function () {
-    document.getElementById('recentOverlay').hidden = true;
+  document.getElementById('recentRefresh').addEventListener('click', loadRecent);
+
+  document.querySelectorAll('.main-tab').forEach(function (tab) {
+    tab.addEventListener('click', function () {
+      document.querySelectorAll('.main-tab').forEach(function (t) { t.classList.remove('active'); });
+      tab.classList.add('active');
+      var view = tab.getAttribute('data-view');
+      document.getElementById('view-order').hidden = view !== 'order';
+      document.getElementById('view-history').hidden = view !== 'history';
+      if (view === 'history') loadRecent();
+    });
   });
 
   async function init() {
