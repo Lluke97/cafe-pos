@@ -1,0 +1,44 @@
+<!doctype html>
+<html lang="ko">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1, viewport-fit=cover">
+<title>주섬주섬 카페</title>
+<link rel="stylesheet" href="style.css">
+<style>
+  .home-wrap { max-width: 420px; margin: 40px auto; padding: 0 16px; display: flex; flex-direction: column; gap: 14px; }
+  .home-link {
+    display: flex; align-items: center; gap: 14px; padding: 20px; border-radius: 16px;
+    background: var(--surface); border: 1px solid var(--border); box-shadow: var(--shadow);
+    text-decoration: none; color: var(--text);
+  }
+  .home-link .emoji { font-size: 28px; }
+  .home-link .label { font-size: 16px; font-weight: 700; }
+  .home-link .desc { font-size: 12px; color: var(--text-muted); margin-top: 2px; }
+</style>
+</head>
+<body>
+<header><h1>☕ 주섬주섬 카페</h1><span id="clock"></span></header>
+<div class="home-wrap">
+  <a class="home-link" href="/pos.html">
+    <span class="emoji">🧾</span>
+    <span><span class="label">계산대</span><br><span class="desc">메뉴 탭해서 주문·결제</span></span>
+  </a>
+  <a class="home-link" href="/entry.html">
+    <span class="emoji">🧮</span>
+    <span><span class="label">구매·지출 입력</span><br><span class="desc">원재료/운영비/기타</span></span>
+  </a>
+  <a class="home-link" href="/admin">
+    <span class="emoji">🛠️</span>
+    <span><span class="label">관리자</span><br><span class="desc">매출·지출·메뉴 관리, 엑셀 다운로드</span></span>
+  </a>
+</div>
+<script>
+  function tick() {
+    var d = new Date();
+    document.getElementById('clock').textContent = String(d.getHours()).padStart(2, '0') + ':' + String(d.getMinutes()).padStart(2, '0');
+  }
+  tick(); setInterval(tick, 30000);
+</script>
+</body>
+</html>
