@@ -89,7 +89,7 @@ app.get('/api/orders', (req, res) => {
 
 // Staff places an order from the till screen.
 app.post('/api/orders', (req, res) => {
-  const { items, total, pay, cashier } = req.body || {};
+  const { items, total, pay, cashier, device } = req.body || {};
   if (!Array.isArray(items) || items.length === 0) {
     return res.status(400).json({ error: 'items is required' });
   }
@@ -103,6 +103,7 @@ app.post('/api/orders', (req, res) => {
     total,
     pay: pay || null,
     cashier: cashier || null,
+    device: device || null, // which till/device placed this order
     status: 'new' // 'new' | 'done' — used by the Brew Board
   };
   const orders = db.getOrders();
