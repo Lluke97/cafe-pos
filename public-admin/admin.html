@@ -74,21 +74,21 @@
     <div id="settlementSinceNote" style="font-size:12px; color:var(--text-muted); margin-bottom:10px;"></div>
     <div class="settlement-row">
       <div class="settlement-col">
-        <div class="settlement-label">💵 시스템 집계 현금</div>
-        <div class="settlement-value" id="recordedCash">RM0.00</div>
+        <div class="settlement-label">💵 이전 현금 잔액</div>
+        <div class="settlement-value" id="prevCash">RM0.00</div>
       </div>
       <div class="settlement-col">
-        <div class="settlement-label">📱 시스템 집계 터치앤고</div>
-        <div class="settlement-value" id="recordedTng">RM0.00</div>
+        <div class="settlement-label">📱 이전 터치앤고 잔액</div>
+        <div class="settlement-value" id="prevTng">RM0.00</div>
       </div>
     </div>
     <div class="settlement-row" style="margin-top:12px;">
       <div class="field" style="flex:1;">
-        <label>실제 현금 (세어본 금액)</label>
+        <label>💵 최신 현금 잔액 (세어본 금액)</label>
         <input type="number" id="actualCash" step="0.01" placeholder="예: 350.00">
       </div>
       <div class="field" style="flex:1;">
-        <label>실제 터치앤고 (앱/명세 확인)</label>
+        <label>📱 최신 터치앤고 잔액 (앱/명세 확인)</label>
         <input type="number" id="actualTng" step="0.01" placeholder="예: 420.00">
       </div>
     </div>
@@ -208,15 +208,17 @@
   // ---------- 정산 (cash / Touch 'n Go settlement) ----------
   async function loadSettlementStatus() {
     var s = await api('/api/admin/settlement-status');
-    document.getElementById('recordedCash').textContent = fmt(s.recordedCash);
-    document.getElementById('recordedTng').textContent = fmt(s.recordedTng);
+    // "이전 잔액" = what was actually counted at the last settlement.
+    document.getElementById('prevCash').textContent = fmt(s.lastActualCash);
+    document.getElementById('prevTng').textContent = fmt(s.lastActualTng);
     document.getElementById('settlementSinceNote').textContent = s.since
-      ? ('마지막 정산: ' + s.since + ' (그 이후 집계된 금액이에요)')
-      : '아직 정산한 적 없음 — 전체 기간 집계예요. 실제 센 금액을 입력하고 정산하기를 눌러주세요.';
-    // Prefill with the system's recorded amount so the owner only has to
-    // correct it if the real count differs.
-    document.getElementById('actualCash').value = s.recordedCash.toFixed(2);
-    document.getElementById('actualTng').value = s.recordedTng.toFixed(2);
+      ? ('마지막 정산: ' + s.since + ' — 그 이후 들어온 주문 기준으로 비교해요')
+      : '아직 정산한 적 없음 — 전체 기간 기준이에요. 최신 금액을 세어서 입력하고 정산하기를 눌러주세요.';
+    // Prefill the "최신 잔액" inputs with the system's expected amount
+    // (이전 잔액 + 그 이후 집계) so the owner only has to correct it if the
+    // real count differs.
+    document.getElementById('actualCash').value = (s.lastActualCash + s.recordedCash).toFixed(2);
+    document.getElementById('actualTng').value = (s.lastActualTng + s.recordedTng).toFixed(2);
   }
 
   function diffHtml(label, diff) {
