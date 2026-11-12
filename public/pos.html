@@ -210,7 +210,7 @@
         return;
       }
       body.innerHTML = orders.map(function (o) {
-        var time = o.createdAt.slice(11, 16);
+        var time = o.createdAt.slice(11, 19);
         var desc = o.items.map(function (i) { return i.name + ' x' + i.qty; }).join(', ');
         return '<div class="recent-row"><div class="top"><span>' + time + (o.pay ? ' · ' + o.pay : '') + '</span><span>' + fmt(o.total) + '</span></div><div class="desc"></div></div>';
       }).join('');
