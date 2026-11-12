@@ -64,23 +64,30 @@ header span { font-size: 12px; opacity: .85; }
 }
 .tab.active { background: var(--accent); border-color: var(--accent); color: var(--accent-contrast); }
 
-.grid { display: grid; grid-template-columns: repeat(3, 1fr); gap: 10px; }
-@media (min-width: 500px) and (max-width: 759px) { .grid { grid-template-columns: repeat(4, 1fr); } }
+/* Column count and tile size are computed in JS (fitMenuGrid) so the grid
+   never needs its own scrollbar as menu items are added — tiles just shrink
+   to keep everything visible. --cols/--tile-px fall back sanely before JS runs. */
+.grid { display: grid; grid-template-columns: repeat(var(--cols, 3), 1fr); gap: 10px; align-content: start; }
 
 .item-btn {
   position: relative; display: flex; flex-direction: column; align-items: center; justify-content: center;
   gap: 6px; aspect-ratio: 1 / 1; border: 1px solid var(--border); border-radius: 14px;
   background: var(--surface); box-shadow: var(--shadow); cursor: pointer;
   -webkit-tap-highlight-color: transparent; user-select: none; padding: 6px; transition: transform .08s ease;
+  min-width: 0; min-height: 0; overflow: hidden;
 }
 .item-btn:active { transform: scale(0.95); }
-.item-emoji { font-size: 28px; line-height: 1; }
-.item-name { font-size: 12px; font-weight: 700; text-align: center; line-height: 1.2; }
-.item-price { font-size: 11px; color: var(--text-muted); }
+.item-emoji { font-size: clamp(14px, calc(var(--tile-px, 100px) * 0.30), 34px); line-height: 1; }
+.item-name {
+  font-size: clamp(9px, calc(var(--tile-px, 100px) * 0.12), 13px); font-weight: 700;
+  text-align: center; line-height: 1.2; max-width: 100%; overflow: hidden; text-overflow: ellipsis; white-space: nowrap;
+}
+.item-price { font-size: clamp(8px, calc(var(--tile-px, 100px) * 0.10), 12px); color: var(--text-muted); }
 .item-qty-badge {
   position: absolute; top: -6px; right: -6px; min-width: 22px; height: 22px; padding: 0 5px;
   border-radius: 999px; background: var(--accent); color: var(--accent-contrast);
-  font-size: 12px; font-weight: 700; display: flex; align-items: center; justify-content: center;
+  font-size: clamp(9px, calc(var(--tile-px, 100px) * 0.11), 12px); font-weight: 700;
+  display: flex; align-items: center; justify-content: center;
 }
 
 .ticket-head { padding: 16px 16px 10px; border-bottom: 1px solid var(--border); display: flex; align-items: center; justify-content: space-between; }
