@@ -173,6 +173,7 @@ header span { font-size: 12px; opacity: .85; }
 .nav-menu a:hover, .nav-menu a:active { background: var(--surface-2); }
 .nav-menu a.current { color: var(--accent); }
 .header-right { display: flex; align-items: center; gap: 12px; }
+#themeBtn { background: transparent; border: none; color: inherit; font-size: 17px; cursor: pointer; padding: 2px 4px; -webkit-tap-highlight-color: transparent; }
 
 /* ---- used by entry.html / admin.html forms ---- */
 .form-card { background: var(--surface); border: 1px solid var(--border); border-radius: 14px; padding: 16px; max-width: 460px; margin: 16px auto; }
