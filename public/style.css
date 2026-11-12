@@ -138,11 +138,34 @@ header span { font-size: 12px; opacity: .85; }
 }
 .main-tab.active { background: var(--accent); border-color: var(--accent); color: var(--accent-contrast); }
 
-/* ---- 오늘 주문 history view: fits the screen, only the list itself scrolls ---- */
-#view-history {
-  padding: 14px; max-width: 640px; margin: 0 auto; box-sizing: border-box;
+/* ---- 오늘 주문 history view: fits the screen, only the list itself scrolls ----
+   IMPORTANT: these rules must only apply when the section is actually shown.
+   An unscoped "#view-history { display: flex }" beats the browser's own
+   "[hidden] { display: none }" by specificity, so it stayed visible (and kept
+   taking up height) even while the 새 주문 tab was hidden="true" — that's what
+   made it reappear below the till when you scrolled. :not([hidden]) fixes it. */
+#view-history { padding: 14px; max-width: 640px; margin: 0 auto; box-sizing: border-box; }
+#view-history:not([hidden]) {
   height: calc(100vh - 128px - env(safe-area-inset-top, 0px) - env(safe-area-inset-bottom, 0px));
   display: flex; flex-direction: column;
+}
+
+/* ---- 새 주문 (till) view: also locked to the screen, no outer scroll ---- */
+#view-order { box-sizing: border-box; }
+#view-order:not([hidden]) {
+  height: calc(100vh - 118px - env(safe-area-inset-top, 0px) - env(safe-area-inset-bottom, 0px));
+  overflow: hidden;
+}
+#view-order:not([hidden]) .layout { height: 100%; }
+@media (min-width: 760px) {
+  /* Wide (iPad+): menu grid scrolls on its own, ticket panel fills the rest — nothing outside scrolls. */
+  #view-order:not([hidden]) .layout { align-items: stretch; }
+  #view-order:not([hidden]) .left { height: 100%; overflow-y: auto; box-sizing: border-box; }
+  #view-order:not([hidden]) .right { position: static; height: 100%; }
+}
+@media (max-width: 759px) {
+  /* Narrow phones: let this one section scroll as a whole instead of forcing a fixed split. */
+  #view-order:not([hidden]) { overflow-y: auto; }
 }
 .recent-panel {
   background: var(--surface); border: 1px solid var(--border); border-radius: 14px; overflow: hidden;
