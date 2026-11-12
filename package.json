@@ -1,0 +1,12 @@
+{
+  "name": "cafe-pos",
+  "version": "1.0.0",
+  "private": true,
+  "description": "Lightweight single-server cafe POS: order entry, menu admin, receipts, purchases/expenses.",
+  "scripts": {
+    "start": "node server.js"
+  },
+  "dependencies": {
+    "express": "^4.19.2"
+  }
+}

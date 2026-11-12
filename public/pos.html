@@ -1,0 +1,214 @@
+<!doctype html>
+<html lang="ko">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1, viewport-fit=cover">
+<title>카페 POS</title>
+<link rel="stylesheet" href="style.css">
+</head>
+<body>
+<header>
+  <h1>☕ Luke's Cafe POS</h1>
+  <span id="clock"></span>
+</header>
+
+<div class="layout">
+  <div class="left">
+    <div class="tabs" id="tabs"></div>
+    <div class="grid" id="grid"></div>
+  </div>
+
+  <div class="right">
+    <div class="ticket-head">
+      <h2>주문 내역</h2>
+      <span class="clear" id="clearBtn">비우기</span>
+    </div>
+    <div class="ticket-body" id="ticketBody"></div>
+    <div class="ticket-foot">
+      <div class="sum-row total"><span>합계</span><span id="totalValue">RM0.00</span></div>
+      <div class="pay-row" id="payRow"></div>
+      <div class="action-row">
+        <button id="submitBtn" class="btn btn-primary">제출</button>
+      </div>
+      <div id="toast" class="toast" hidden></div>
+    </div>
+  </div>
+</div>
+
+<script>
+  var MENU = [];
+  var CATEGORIES = [];
+  var activeCat = null;
+  var cart = {};
+  var payMethod = null;
+  var PAY_OPTIONS = ['현금', '터치앤고'];
+  var submitting = false;
+
+  function fmt(n) {
+    return 'RM' + n.toLocaleString('en-MY', { minimumFractionDigits: 2, maximumFractionDigits: 2 });
+  }
+
+  function renderClock() {
+    var el = document.getElementById('clock');
+    var d = new Date();
+    el.textContent = String(d.getHours()).padStart(2, '0') + ':' + String(d.getMinutes()).padStart(2, '0');
+  }
+
+  function renderTabs() {
+    var tabs = document.getElementById('tabs');
+    tabs.innerHTML = '';
+    CATEGORIES.forEach(function (c) {
+      var t = document.createElement('div');
+      t.className = 'tab' + (activeCat === c ? ' active' : '');
+      t.textContent = c;
+      t.addEventListener('click', function () { activeCat = c; render(); });
+      tabs.appendChild(t);
+    });
+  }
+
+  function renderGrid() {
+    var grid = document.getElementById('grid');
+    grid.innerHTML = '';
+    MENU.filter(function (it) { return it.category === activeCat; }).forEach(function (it) {
+      var btn = document.createElement('div');
+      btn.className = 'item-btn';
+      btn.innerHTML =
+        '<div class="item-emoji">' + it.emoji + '</div>' +
+        '<div class="item-name"></div>' +
+        '<div class="item-price">' + fmt(it.price) + '</div>';
+      btn.querySelector('.item-name').textContent = it.name;
+      var qty = cart[it.id] || 0;
+      if (qty > 0) {
+        var badge = document.createElement('div');
+        badge.className = 'item-qty-badge';
+        badge.textContent = qty;
+        btn.appendChild(badge);
+      }
+      btn.addEventListener('click', function () {
+        cart[it.id] = (cart[it.id] || 0) + 1;
+        render();
+      });
+      grid.appendChild(btn);
+    });
+  }
+
+  function renderTicket() {
+    var body = document.getElementById('ticketBody');
+    body.innerHTML = '';
+    var entries = Object.keys(cart).filter(function (k) { return cart[k] > 0; });
+    if (entries.length === 0) {
+      body.innerHTML = '<div class="ticket-empty">메뉴를 선택해주세요</div>';
+      return;
+    }
+    entries.forEach(function (id) {
+      var it = MENU.find(function (x) { return x.id === id; });
+      if (!it) return;
+      var qty = cart[id];
+      var row = document.createElement('div');
+      row.className = 'ticket-row';
+      row.innerHTML =
+        '<span class="emoji">' + it.emoji + '</span>' +
+        '<span class="name"></span>' +
+        '<span class="stepper">' +
+          '<button data-act="dec" data-id="' + id + '">−</button>' +
+          '<span class="qty">' + qty + '</span>' +
+          '<button data-act="inc" data-id="' + id + '">+</button>' +
+        '</span>' +
+        '<span class="amount">' + fmt(it.price * qty) + '</span>';
+      row.querySelector('.name').textContent = it.name;
+      body.appendChild(row);
+    });
+    body.querySelectorAll('button[data-act]').forEach(function (b) {
+      b.addEventListener('click', function () {
+        var id = b.getAttribute('data-id');
+        var act = b.getAttribute('data-act');
+        if (act === 'inc') cart[id] = (cart[id] || 0) + 1;
+        else cart[id] = Math.max(0, (cart[id] || 0) - 1);
+        render();
+      });
+    });
+  }
+
+  function renderPay() {
+    var row = document.getElementById('payRow');
+    row.innerHTML = '';
+    PAY_OPTIONS.forEach(function (p) {
+      var chip = document.createElement('div');
+      chip.className = 'pay-chip' + (payMethod === p ? ' selected' : '');
+      chip.textContent = (p === '현금' ? '💵 ' : '📱 ') + p;
+      chip.addEventListener('click', function () { payMethod = p; render(); });
+      row.appendChild(chip);
+    });
+  }
+
+  function total() {
+    return MENU.reduce(function (sum, it) { return sum + it.price * (cart[it.id] || 0); }, 0);
+  }
+
+  function renderFooter() {
+    var t = total();
+    document.getElementById('totalValue').textContent = fmt(t);
+    var btn = document.getElementById('submitBtn');
+    var ok = t > 0 && payMethod && !submitting;
+    btn.classList.toggle('active', ok);
+    btn.disabled = !ok;
+  }
+
+  function render() {
+    renderTabs();
+    renderGrid();
+    renderTicket();
+    renderPay();
+    renderFooter();
+  }
+
+  function showToast(msg, isError) {
+    var t = document.getElementById('toast');
+    t.textContent = msg;
+    t.hidden = false;
+    t.className = 'toast' + (isError ? ' error' : '');
+    setTimeout(function () { t.hidden = true; }, 2200);
+  }
+
+  async function submitOrder() {
+    if (submitting) return;
+    submitting = true; render();
+    var items = Object.keys(cart).filter(function (k) { return cart[k] > 0; }).map(function (id) {
+      var it = MENU.find(function (x) { return x.id === id; });
+      return { id: id, name: it.name, price: it.price, qty: cart[id] };
+    });
+    try {
+      var res = await fetch('/api/orders', {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ items: items, total: total(), pay: payMethod })
+      });
+      if (!res.ok) throw new Error('save failed');
+      showToast('주문이 저장됐어요 ✓');
+      cart = {}; payMethod = null;
+    } catch (e) {
+      showToast('저장 실패 - 다시 시도해주세요', true);
+    } finally {
+      submitting = false; render();
+    }
+  }
+
+  document.getElementById('clearBtn').addEventListener('click', function () {
+    cart = {}; payMethod = null; render();
+  });
+  document.getElementById('submitBtn').addEventListener('click', submitOrder);
+
+  async function init() {
+    var res = await fetch('/api/menu');
+    MENU = await res.json();
+    CATEGORIES = Array.from(new Set(MENU.map(function (it) { return it.category; })));
+    activeCat = CATEGORIES[0] || null;
+    renderClock();
+    setInterval(renderClock, 30000);
+    render();
+  }
+
+  init();
+</script>
+</body>
+</html>

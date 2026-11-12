@@ -1,0 +1,89 @@
+<!doctype html>
+<html lang="ko">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1, viewport-fit=cover">
+<title>구매·지출 입력</title>
+<link rel="stylesheet" href="style.css">
+</head>
+<body>
+<header><h1>🧾 구매·지출 입력</h1><span></span></header>
+
+<div class="form-card">
+  <div class="field">
+    <label>날짜</label>
+    <input type="date" id="date">
+  </div>
+  <div class="field">
+    <label>카테고리</label>
+    <div class="chip-group" id="categoryChips">
+      <div class="chip" data-v="원재료">원재료</div>
+      <div class="chip" data-v="운영비">운영비</div>
+      <div class="chip" data-v="기타">기타</div>
+    </div>
+  </div>
+  <div class="field">
+    <label>금액 (RM)</label>
+    <input type="number" id="amount" inputmode="decimal" placeholder="예: 45.00" step="0.01" min="0">
+  </div>
+  <div class="field">
+    <label>작성자 이름</label>
+    <input type="text" id="author" placeholder="예: 홍길동">
+  </div>
+  <div class="field">
+    <label>메모 (선택)</label>
+    <textarea id="memo" placeholder="예: 원두 2kg 구매"></textarea>
+  </div>
+  <button id="submitBtn" class="btn btn-primary active" style="width:100%">제출</button>
+  <div id="toast" class="toast" hidden></div>
+</div>
+
+<script>
+  var category = null;
+  document.getElementById('date').value = new Date().toISOString().slice(0, 10);
+
+  document.querySelectorAll('#categoryChips .chip').forEach(function (chip) {
+    chip.addEventListener('click', function () {
+      category = chip.getAttribute('data-v');
+      document.querySelectorAll('#categoryChips .chip').forEach(function (c) { c.classList.remove('selected'); });
+      chip.classList.add('selected');
+    });
+  });
+
+  function showToast(msg, isError) {
+    var t = document.getElementById('toast');
+    t.textContent = msg;
+    t.hidden = false;
+    t.className = 'toast' + (isError ? ' error' : '');
+    setTimeout(function () { t.hidden = true; }, 2200);
+  }
+
+  document.getElementById('submitBtn').addEventListener('click', async function () {
+    var amount = parseFloat(document.getElementById('amount').value);
+    if (!category) return showToast('카테고리를 선택해주세요', true);
+    if (!amount || amount <= 0) return showToast('금액을 입력해주세요', true);
+
+    var payload = {
+      date: document.getElementById('date').value,
+      category: category,
+      amount: amount,
+      memo: document.getElementById('memo').value,
+      author: document.getElementById('author').value
+    };
+    try {
+      var res = await fetch('/api/expenses', {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify(payload)
+      });
+      if (!res.ok) throw new Error('fail');
+      showToast('저장됐어요 ✓');
+      document.getElementById('amount').value = '';
+      document.getElementById('memo').value = '';
+    } catch (e) {
+      showToast('저장 실패 - 다시 시도해주세요', true);
+    }
+  });
+</script>
+</body>
+</html>

@@ -1,0 +1,181 @@
+<!doctype html>
+<html lang="ko">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1, viewport-fit=cover">
+<title>카페 관리자</title>
+<link rel="stylesheet" href="/style.css">
+<style>
+  .hidden { display: none !important; }
+  .row-actions { display: flex; gap: 6px; }
+  .menu-form-row { display: flex; gap: 8px; flex-wrap: wrap; align-items: flex-end; margin-bottom: 16px; }
+  .menu-form-row .field { margin-bottom: 0; flex: 1; min-width: 110px; }
+</style>
+</head>
+<body>
+<header><h1>🛠️ 카페 관리자</h1><span id="clock"></span></header>
+
+<div class="admin-tabs">
+  <div class="tab active" data-tab="summary">요약</div>
+  <div class="tab" data-tab="orders">주문 내역</div>
+  <div class="tab" data-tab="expenses">구매·지출</div>
+  <div class="tab" data-tab="menu">메뉴 관리</div>
+</div>
+
+<section id="tab-summary" class="admin-section">
+  <div class="kpi-row" id="todayKpis"></div>
+  <table class="admin-table">
+    <thead><tr><th>날짜</th><th>매출</th><th>구매·지출</th><th>손익</th></tr></thead>
+    <tbody id="summaryRows"></tbody>
+  </table>
+</section>
+
+<section id="tab-orders" class="admin-section hidden">
+  <div class="field" style="max-width:200px"><label>날짜 필터</label><input type="date" id="ordersDate"></div>
+  <table class="admin-table">
+    <thead><tr><th>시간</th><th>내역</th><th>결제</th><th>합계</th><th></th></tr></thead>
+    <tbody id="ordersRows"></tbody>
+  </table>
+</section>
+
+<section id="tab-expenses" class="admin-section hidden">
+  <div class="field" style="max-width:200px"><label>날짜 필터</label><input type="date" id="expensesDate"></div>
+  <table class="admin-table">
+    <thead><tr><th>날짜</th><th>카테고리</th><th>금액</th><th>메모</th><th>작성자</th><th></th></tr></thead>
+    <tbody id="expensesRows"></tbody>
+  </table>
+</section>
+
+<section id="tab-menu" class="admin-section hidden">
+  <div class="menu-form-row">
+    <div class="field"><label>이모지</label><input id="mEmoji" placeholder="☕" style="width:60px"></div>
+    <div class="field"><label>이름</label><input id="mName" placeholder="예: Americano"></div>
+    <div class="field"><label>카테고리</label><input id="mCategory" placeholder="예: 음료"></div>
+    <div class="field"><label>가격 (RM)</label><input id="mPrice" type="number" step="0.01" placeholder="예: 6.00"></div>
+    <button id="mAddBtn" class="btn btn-primary active" style="flex:0 0 auto; padding:10px 16px;">추가</button>
+  </div>
+  <table class="admin-table">
+    <thead><tr><th></th><th>이름</th><th>카테고리</th><th>가격</th><th></th></tr></thead>
+    <tbody id="menuRows"></tbody>
+  </table>
+</section>
+
+<script>
+  function fmt(n) {
+    return 'RM' + Number(n).toLocaleString('en-MY', { minimumFractionDigits: 2, maximumFractionDigits: 2 });
+  }
+  function renderClock() {
+    var d = new Date();
+    document.getElementById('clock').textContent = String(d.getHours()).padStart(2, '0') + ':' + String(d.getMinutes()).padStart(2, '0');
+  }
+  renderClock(); setInterval(renderClock, 30000);
+
+  document.querySelectorAll('.admin-tabs .tab').forEach(function (tab) {
+    tab.addEventListener('click', function () {
+      document.querySelectorAll('.admin-tabs .tab').forEach(function (t) { t.classList.remove('active'); });
+      tab.classList.add('active');
+      document.querySelectorAll('.admin-section').forEach(function (s) { s.classList.add('hidden'); });
+      document.getElementById('tab-' + tab.getAttribute('data-tab')).classList.remove('hidden');
+    });
+  });
+
+  async function api(path, opts) {
+    var res = await fetch(path, opts);
+    if (!res.ok) throw new Error('request failed: ' + path);
+    return res.json();
+  }
+
+  // ---------- Summary ----------
+  async function loadSummary() {
+    var days = await api('/api/admin/summary');
+    var today = new Date().toISOString().slice(0, 10);
+    var t = days.find(function (d) { return d.date === today; }) || { revenue: 0, cost: 0, profit: 0 };
+    document.getElementById('todayKpis').innerHTML =
+      '<div class="kpi-card"><div class="label">오늘 매출</div><div class="value">' + fmt(t.revenue) + '</div></div>' +
+      '<div class="kpi-card"><div class="label">오늘 구매·지출</div><div class="value">' + fmt(t.cost) + '</div></div>' +
+      '<div class="kpi-card"><div class="label">오늘 손익</div><div class="value">' + fmt(t.profit) + '</div></div>';
+    document.getElementById('summaryRows').innerHTML = days.map(function (d) {
+      return '<tr><td>' + d.date + '</td><td>' + fmt(d.revenue) + '</td><td>' + fmt(d.cost) + '</td><td>' + fmt(d.profit) + '</td></tr>';
+    }).join('') || '<tr><td colspan="4">데이터 없음</td></tr>';
+  }
+
+  // ---------- Orders ----------
+  async function loadOrders() {
+    var dateVal = document.getElementById('ordersDate').value;
+    var qs = dateVal ? ('?date=' + dateVal) : '';
+    var orders = await api('/api/admin/orders' + qs);
+    document.getElementById('ordersRows').innerHTML = orders.map(function (o) {
+      var desc = o.items.map(function (i) { return i.name + ' x' + i.qty; }).join(', ');
+      var time = o.createdAt.slice(11, 16);
+      return '<tr><td>' + time + '</td><td>' + desc + '</td><td>' + (o.pay || '-') + '</td><td>' + fmt(o.total) + '</td>' +
+        '<td><button class="btn-small btn-danger" data-id="' + o.id + '">삭제</button></td></tr>';
+    }).join('') || '<tr><td colspan="5">주문 없음</td></tr>';
+    document.querySelectorAll('#ordersRows button').forEach(function (b) {
+      b.addEventListener('click', async function () {
+        if (!confirm('이 주문을 삭제할까요?')) return;
+        await fetch('/api/admin/orders/' + b.getAttribute('data-id'), { method: 'DELETE' });
+        loadOrders(); loadSummary();
+      });
+    });
+  }
+  document.getElementById('ordersDate').addEventListener('change', loadOrders);
+
+  // ---------- Expenses ----------
+  async function loadExpenses() {
+    var dateVal = document.getElementById('expensesDate').value;
+    var qs = dateVal ? ('?date=' + dateVal) : '';
+    var expenses = await api('/api/admin/expenses' + qs);
+    document.getElementById('expensesRows').innerHTML = expenses.map(function (e) {
+      return '<tr><td>' + e.date + '</td><td>' + e.category + '</td><td>' + fmt(e.amount) + '</td><td>' + (e.memo || '-') + '</td><td>' + (e.author || '-') + '</td>' +
+        '<td><button class="btn-small btn-danger" data-id="' + e.id + '">삭제</button></td></tr>';
+    }).join('') || '<tr><td colspan="6">내역 없음</td></tr>';
+    document.querySelectorAll('#expensesRows button').forEach(function (b) {
+      b.addEventListener('click', async function () {
+        if (!confirm('이 내역을 삭제할까요?')) return;
+        await fetch('/api/admin/expenses/' + b.getAttribute('data-id'), { method: 'DELETE' });
+        loadExpenses(); loadSummary();
+      });
+    });
+  }
+  document.getElementById('expensesDate').addEventListener('change', loadExpenses);
+
+  // ---------- Menu ----------
+  async function loadMenu() {
+    var menu = await api('/api/admin/menu');
+    document.getElementById('menuRows').innerHTML = menu.map(function (m) {
+      return '<tr><td>' + m.emoji + '</td><td>' + m.name + '</td><td>' + m.category + '</td><td>' + fmt(m.price) + '</td>' +
+        '<td><button class="btn-small btn-danger" data-id="' + m.id + '">삭제</button></td></tr>';
+    }).join('') || '<tr><td colspan="5">메뉴 없음</td></tr>';
+    document.querySelectorAll('#menuRows button').forEach(function (b) {
+      b.addEventListener('click', async function () {
+        if (!confirm('이 메뉴를 삭제할까요?')) return;
+        await fetch('/api/admin/menu/' + b.getAttribute('data-id'), { method: 'DELETE' });
+        loadMenu();
+      });
+    });
+  }
+  document.getElementById('mAddBtn').addEventListener('click', async function () {
+    var name = document.getElementById('mName').value.trim();
+    var price = parseFloat(document.getElementById('mPrice').value);
+    var category = document.getElementById('mCategory').value.trim() || '기타';
+    var emoji = document.getElementById('mEmoji').value.trim() || '🍽️';
+    if (!name || !price) return alert('이름과 가격을 입력해주세요');
+    await fetch('/api/admin/menu', {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify({ name: name, price: price, category: category, emoji: emoji })
+    });
+    document.getElementById('mName').value = '';
+    document.getElementById('mPrice').value = '';
+    document.getElementById('mCategory').value = '';
+    document.getElementById('mEmoji').value = '';
+    loadMenu();
+  });
+
+  loadSummary();
+  loadOrders();
+  loadExpenses();
+  loadMenu();
+</script>
+</body>
+</html>
