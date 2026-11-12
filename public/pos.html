@@ -18,6 +18,7 @@
 <header>
   <h1>☕ 주섬주섬 카페</h1>
   <div class="header-right">
+    <span id="deviceLabel" style="font-size:11px; opacity:.8;"></span>
     <span id="clock"></span>
     <button id="themeBtn" title="테마 변경">🌓</button>
     <div class="nav-wrap">
@@ -74,6 +75,19 @@
 </div>
 
 <script>
+  // Each till can be labeled once (e.g. "카운터1") so the admin page can
+  // tell which device an order came from. Stored per-device in localStorage.
+  function getDeviceName() {
+    var KEY = 'cafe-device-name';
+    var name = localStorage.getItem(KEY);
+    if (!name) {
+      name = (window.prompt('이 기기 이름을 입력해주세요 (예: 카운터1)', '카운터1') || '').trim() || '이름없는 기기';
+      localStorage.setItem(KEY, name);
+    }
+    return name;
+  }
+  var DEVICE_NAME = getDeviceName();
+
   var MENU = [];
   var cart = {};
   var payMethod = null;
@@ -89,6 +103,44 @@
     var d = new Date();
     el.textContent = String(d.getHours()).padStart(2, '0') + ':' + String(d.getMinutes()).padStart(2, '0');
   }
+
+  // Picks the largest square tile size + column count that fits every menu
+  // item in the visible area with no scrolling, so a bigger menu shrinks
+  // the buttons instead of overflowing.
+  function fitMenuGrid() {
+    var left = document.querySelector('#view-order .left');
+    var grid = document.getElementById('grid');
+    var n = MENU.length;
+    if (!left || !grid || !n) return;
+    var cs = getComputedStyle(left);
+    var W = left.clientWidth - (parseFloat(cs.paddingLeft) || 0) - (parseFloat(cs.paddingRight) || 0);
+    var H = left.clientHeight - (parseFloat(cs.paddingTop) || 0) - (parseFloat(cs.paddingBottom) || 0);
+    var gap = 10;
+    var bestCols = 1, bestTile = 0;
+    for (var cols = 1; cols <= n; cols++) {
+      var tileW = (W - gap * (cols - 1)) / cols;
+      if (tileW <= 0) continue;
+      var rows = Math.ceil(n / cols);
+      var totalH = rows * tileW + gap * (rows - 1);
+      if (totalH <= H && tileW > bestTile) { bestTile = tileW; bestCols = cols; }
+    }
+    if (bestTile === 0) {
+      // Too many items for this screen even at a sane minimum — fall back
+      // to a reasonable column count; .left can still scroll as a last resort.
+      bestCols = Math.max(2, Math.floor(W / 90)) || 2;
+      bestTile = (W - gap * (bestCols - 1)) / bestCols;
+    }
+    grid.style.setProperty('--cols', bestCols);
+    grid.style.setProperty('--tile-px', bestTile + 'px');
+  }
+
+  var fitMenuGridRaf = null;
+  function scheduleFitMenuGrid() {
+    if (fitMenuGridRaf) cancelAnimationFrame(fitMenuGridRaf);
+    fitMenuGridRaf = requestAnimationFrame(fitMenuGrid);
+  }
+  window.addEventListener('resize', scheduleFitMenuGrid);
+  window.addEventListener('orientationchange', scheduleFitMenuGrid);
 
   function renderGrid() {
     var grid = document.getElementById('grid');
@@ -183,6 +235,7 @@
     renderTicket();
     renderPay();
     renderFooter();
+    scheduleFitMenuGrid();
   }
 
   function showToast(msg, isError) {
@@ -204,7 +257,7 @@
       var res = await fetch('/api/orders', {
         method: 'POST',
         headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify({ items: items, total: total(), pay: payMethod })
+        body: JSON.stringify({ items: items, total: total(), pay: payMethod, device: DEVICE_NAME })
       });
       if (!res.ok) throw new Error('save failed');
       showToast('주문이 저장됐어요 ✓');
@@ -291,6 +344,18 @@
   });
 
   async function init() {
+    var deviceLabelEl = document.getElementById('deviceLabel');
+    deviceLabelEl.textContent = '📍 ' + DEVICE_NAME;
+    deviceLabelEl.style.cursor = 'pointer';
+    deviceLabelEl.title = '탭하면 기기 이름 변경';
+    deviceLabelEl.addEventListener('click', function () {
+      var next = (window.prompt('기기 이름 변경', DEVICE_NAME) || '').trim();
+      if (next) {
+        DEVICE_NAME = next;
+        localStorage.setItem('cafe-device-name', next);
+        deviceLabelEl.textContent = '📍 ' + DEVICE_NAME;
+      }
+    });
     var res = await fetch('/api/menu');
     MENU = await res.json();
     renderClock();
