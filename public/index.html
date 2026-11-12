@@ -5,6 +5,7 @@
 <meta name="viewport" content="width=device-width, initial-scale=1, viewport-fit=cover">
 <title>주섬주섬 카페</title>
 <link rel="stylesheet" href="style.css">
+<script src="theme.js"></script>
 <style>
   .home-wrap { max-width: 420px; margin: 40px auto; padding: 0 16px; display: flex; flex-direction: column; gap: 14px; }
   .home-link {
@@ -18,7 +19,13 @@
 </style>
 </head>
 <body>
-<header><h1>☕ 주섬주섬 카페</h1><span id="clock"></span></header>
+<header>
+  <h1>☕ 주섬주섬 카페</h1>
+  <div class="header-right">
+    <span id="clock"></span>
+    <button id="themeBtn" title="테마 변경">🌓</button>
+  </div>
+</header>
 <div class="home-wrap">
   <a class="home-link" href="/pos.html">
     <span class="emoji">🧾</span>
