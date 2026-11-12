@@ -27,6 +27,16 @@
   .chart-card { background: var(--surface); border: 1px solid var(--border); border-radius: 12px; padding: 14px; margin: 10px 16px 0; }
   .menu-edit-row input { width: 100%; }
   .inline-save { color: var(--ok); }
+  .settlement-card { background: var(--surface); border: 1px solid var(--border); border-radius: 12px; padding: 16px; margin: 16px; }
+  .settlement-row { display: flex; gap: 10px; flex-wrap: wrap; }
+  .settlement-col { flex: 1; min-width: 140px; background: var(--surface-2); border-radius: 10px; padding: 10px 12px; }
+  .settlement-label { font-size: 11px; color: var(--text-muted); }
+  .settlement-value { font-size: 18px; font-weight: 700; margin-top: 2px; }
+  .settle-result-box { border-radius: 10px; padding: 12px; font-size: 13px; }
+  .settle-result-box.ok { background: rgba(63,138,74,.15); color: var(--ok); }
+  .settle-result-box.off { background: rgba(179,80,63,.15); color: var(--danger); }
+  .diff-ok { color: var(--ok); }
+  .diff-off { color: var(--danger); font-weight: 700; }
 </style>
 </head>
 <body>
@@ -40,8 +50,8 @@
       <div class="nav-menu" id="navMenu" hidden>
         <a href="/">🏠 홈</a>
         <a href="/pos.html">🧾 계산대</a>
-        <a href="/entry.html">🧮 구매·지출 입력</a>
         <a href="/brew.html">🍵 브루 보드</a>
+        <a href="/entry.html">🧮 구매·지출 입력</a>
         <a href="/admin" class="current">🛠️ 관리자</a>
       </div>
     </div>
@@ -59,13 +69,49 @@
   <div class="kpi-row" id="todayKpis"></div>
   <div class="kpi-row" id="payKpis"></div>
 
-  <div class="settings-card">
-    <div class="field">
-      <label>이월 금액 (시작 현금 잔액, RM)</label>
-      <input type="number" id="startingBalance" step="0.01" placeholder="예: 500.00">
+  <div class="settlement-card" id="settlementCard">
+    <h2 style="margin:0 0 10px; font-size:15px; font-weight:700;">💰 정산 (현금 · 터치앤고 실사)</h2>
+    <div id="settlementSinceNote" style="font-size:12px; color:var(--text-muted); margin-bottom:10px;"></div>
+    <div class="settlement-row">
+      <div class="settlement-col">
+        <div class="settlement-label">💵 시스템 집계 현금</div>
+        <div class="settlement-value" id="recordedCash">RM0.00</div>
+      </div>
+      <div class="settlement-col">
+        <div class="settlement-label">📱 시스템 집계 터치앤고</div>
+        <div class="settlement-value" id="recordedTng">RM0.00</div>
+      </div>
     </div>
-    <button id="saveBalanceBtn" class="btn-small">저장</button>
-    <span id="balanceSaved" class="inline-save" style="display:none; font-size:12px;">저장됐어요 ✓</span>
+    <div class="settlement-row" style="margin-top:12px;">
+      <div class="field" style="flex:1;">
+        <label>실제 현금 (세어본 금액)</label>
+        <input type="number" id="actualCash" step="0.01" placeholder="예: 350.00">
+      </div>
+      <div class="field" style="flex:1;">
+        <label>실제 터치앤고 (앱/명세 확인)</label>
+        <input type="number" id="actualTng" step="0.01" placeholder="예: 420.00">
+      </div>
+    </div>
+    <button id="settleBtn" class="btn btn-primary active" style="width:100%; margin-top:10px;">정산하기</button>
+    <div id="settleResult" style="display:none; margin-top:12px;"></div>
+
+    <div id="reportBox" style="display:none; margin-top:14px;">
+      <div style="font-size:12px; color:var(--text-muted); margin-bottom:6px;">📋 복사해서 보낼 주간 리포트</div>
+      <textarea id="reportText" readonly style="width:100%; min-height:220px; font-family:inherit; font-size:13px; padding:10px 12px; border-radius:10px; border:1px solid var(--border); background:var(--surface-2); color:var(--text); box-sizing:border-box;"></textarea>
+      <button id="copyReportBtn" class="btn btn-primary active" style="width:100%; margin-top:8px;">📋 복사하기</button>
+      <span id="copyReportDone" style="display:none; font-size:12px; color:var(--ok); margin-left:8px;">복사됐어요 ✓</span>
+    </div>
+
+    <div style="margin-top:16px;">
+      <div style="display:flex; justify-content:space-between; align-items:center; margin-bottom:6px;">
+        <span style="font-size:12px; color:var(--text-muted);">지난 정산 기록</span>
+        <span id="regenReportBtn" class="clear" style="font-size:12px;">최근 리포트 다시 보기</span>
+      </div>
+      <table class="admin-table">
+        <thead><tr><th>날짜</th><th>현금 차이</th><th>터치앤고 차이</th></tr></thead>
+        <tbody id="settlementRows"></tbody>
+      </table>
+    </div>
   </div>
 
   <div class="chip-toggle" id="chartToggle">
@@ -77,7 +123,7 @@
   </div>
 
   <table class="admin-table" style="margin:16px;">
-    <thead><tr><th>날짜</th><th>매출</th><th>현금</th><th>터치앤고</th><th>구매·지출</th><th>손익</th><th>잔액</th></tr></thead>
+    <thead><tr><th>날짜</th><th>매출</th><th>현금</th><th>터치앤고</th><th>Free</th><th>구매·지출</th><th>손익</th></tr></thead>
     <tbody id="summaryRows"></tbody>
   </table>
 </section>
@@ -128,7 +174,7 @@
   }
   function renderClock() {
     var d = new Date();
-    document.getElementById('clock').textContent = String(d.getHours()).padStart(2, '0') + ':' + String(d.getMinutes()).padStart(2, '0');
+    document.getElementById('clock').textContent = window.cafeTime.hm(d);
   }
   renderClock(); setInterval(renderClock, 30000);
 
@@ -159,23 +205,137 @@
   var chartMode = 'week';
   var chartInstance = null;
 
-  // ---------- Settings (이월 금액) ----------
-  async function loadSettings() {
-    var s = await api('/api/admin/settings');
-    document.getElementById('startingBalance').value = s.startingBalance || 0;
+  // ---------- 정산 (cash / Touch 'n Go settlement) ----------
+  async function loadSettlementStatus() {
+    var s = await api('/api/admin/settlement-status');
+    document.getElementById('recordedCash').textContent = fmt(s.recordedCash);
+    document.getElementById('recordedTng').textContent = fmt(s.recordedTng);
+    document.getElementById('settlementSinceNote').textContent = s.since
+      ? ('마지막 정산: ' + s.since + ' (그 이후 집계된 금액이에요)')
+      : '아직 정산한 적 없음 — 전체 기간 집계예요. 실제 센 금액을 입력하고 정산하기를 눌러주세요.';
+    // Prefill with the system's recorded amount so the owner only has to
+    // correct it if the real count differs.
+    document.getElementById('actualCash').value = s.recordedCash.toFixed(2);
+    document.getElementById('actualTng').value = s.recordedTng.toFixed(2);
   }
-  document.getElementById('saveBalanceBtn').addEventListener('click', async function () {
-    var val = parseFloat(document.getElementById('startingBalance').value) || 0;
-    await fetch('/api/admin/settings', {
-      method: 'PUT',
-      headers: { 'Content-Type': 'application/json' },
-      body: JSON.stringify({ startingBalance: val })
+
+  function diffHtml(label, diff) {
+    var cls = Math.abs(diff) < 0.01 ? 'diff-ok' : 'diff-off';
+    var text = Math.abs(diff) < 0.01 ? '일치 ✓' : (diff > 0 ? '+' + fmt(diff) + ' (실제가 더 많음)' : fmt(diff) + ' (실제가 더 적음)');
+    return '<div>' + label + ': <span class="' + cls + '">' + text + '</span></div>';
+  }
+
+  // ---------- 복사용 주간 리포트 ----------
+  async function buildReport(record) {
+    var since = record.since; // null, or the previous settlement's date (exclusive)
+    var to = record.date;
+    var qs = (since ? ('from=' + encodeURIComponent(since) + '&') : '') + 'to=' + encodeURIComponent(to);
+    var expenses = await api('/api/admin/expenses?' + qs);
+    var ordersInRange = await api('/api/admin/orders?' + qs);
+    var summary = await api('/api/admin/summary');
+
+    var itemCounts = {}; // name -> { qty, amount }
+    ordersInRange.forEach(function (o) {
+      o.items.forEach(function (it) {
+        if (!itemCounts[it.name]) itemCounts[it.name] = { qty: 0, amount: 0 };
+        itemCounts[it.name].qty += it.qty;
+        itemCounts[it.name].amount += it.price * it.qty;
+      });
     });
-    var badge = document.getElementById('balanceSaved');
-    badge.style.display = 'inline';
-    setTimeout(function () { badge.style.display = 'none'; }, 2000);
-    loadSummary();
+    var itemNames = Object.keys(itemCounts).sort(function (a, b) { return itemCounts[b].qty - itemCounts[a].qty; });
+    var totalCups = itemNames.reduce(function (s, n) { return s + itemCounts[n].qty; }, 0);
+    var daysInRange = summary.filter(function (d) { return (!since || d.date > since) && d.date <= to; });
+    var freeTotal = daysInRange.reduce(function (s, d) { return s + (d.free || 0); }, 0);
+
+    var byCat = {};
+    var catOrder = [];
+    expenses.forEach(function (e) {
+      if (!(e.category in byCat)) { byCat[e.category] = 0; catOrder.push(e.category); }
+      byCat[e.category] += e.amount;
+    });
+    var expenseTotal = expenses.reduce(function (s, e) { return s + e.amount; }, 0);
+    var revenueTotal = record.recordedCash + record.recordedTng;
+    var profit = revenueTotal - expenseTotal;
+
+    var lines = [];
+    lines.push('☕ 주섬주섬 카페 주간 정산 (' + (since ? (since + ' ~ ') : '') + to + ')');
+    lines.push('');
+    lines.push('[매출]');
+    lines.push('현금: ' + fmt(record.recordedCash));
+    lines.push('터치앤고: ' + fmt(record.recordedTng));
+    lines.push('매출 합계: ' + fmt(revenueTotal));
+    if (freeTotal > 0) lines.push('(참고) Free 제공 — 매출 미포함: ' + fmt(freeTotal));
+    lines.push('');
+    lines.push('[메뉴별 판매] 총 ' + totalCups + '잔');
+    if (itemNames.length === 0) lines.push('내역 없음');
+    itemNames.forEach(function (name) {
+      lines.push('- ' + name + ': ' + itemCounts[name].qty + '잔 (' + fmt(itemCounts[name].amount) + ')');
+    });
+    lines.push('');
+    lines.push('[구매·지출]');
+    if (catOrder.length === 0) lines.push('내역 없음');
+    catOrder.forEach(function (cat) { lines.push(cat + ': ' + fmt(byCat[cat])); });
+    lines.push('지출 합계: ' + fmt(expenseTotal));
+    lines.push('');
+    lines.push('손익: ' + fmt(profit));
+    lines.push('');
+    lines.push('[정산 확인 — 실사 결과]');
+    lines.push('실제 현금: ' + fmt(record.actualCash) + (Math.abs(record.diffCash) < 0.01 ? ' (일치 ✓)' : (' (차이 ' + fmt(record.diffCash) + ')')));
+    lines.push('실제 터치앤고: ' + fmt(record.actualTng) + (Math.abs(record.diffTng) < 0.01 ? ' (일치 ✓)' : (' (차이 ' + fmt(record.diffTng) + ')')));
+
+    document.getElementById('reportText').value = lines.join('\n');
+    document.getElementById('reportBox').style.display = 'block';
+  }
+
+  document.getElementById('copyReportBtn').addEventListener('click', async function () {
+    var text = document.getElementById('reportText').value;
+    try {
+      await navigator.clipboard.writeText(text);
+    } catch (e) {
+      var ta = document.getElementById('reportText');
+      ta.focus(); ta.select();
+      document.execCommand('copy');
+    }
+    var done = document.getElementById('copyReportDone');
+    done.style.display = 'inline';
+    setTimeout(function () { done.style.display = 'none'; }, 2000);
   });
+
+  document.getElementById('regenReportBtn').addEventListener('click', async function () {
+    var list = await api('/api/admin/settlements');
+    if (list.length === 0) return alert('정산 기록이 아직 없어요');
+    buildReport(list[0]);
+  });
+
+  document.getElementById('settleBtn').addEventListener('click', async function () {
+    var actualCash = parseFloat(document.getElementById('actualCash').value);
+    var actualTng = parseFloat(document.getElementById('actualTng').value);
+    if (Number.isNaN(actualCash) || Number.isNaN(actualTng)) return alert('실제 현금과 터치앤고 금액을 입력해주세요');
+    var res = await fetch('/api/admin/settlement', {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify({ actualCash: actualCash, actualTng: actualTng })
+    });
+    var record = await res.json();
+    var box = document.getElementById('settleResult');
+    var allOk = Math.abs(record.diffCash) < 0.01 && Math.abs(record.diffTng) < 0.01;
+    box.className = 'settle-result-box ' + (allOk ? 'ok' : 'off');
+    box.innerHTML = (allOk ? '✓ 정산 완료 — 전부 일치해요' : '⚠ 정산 완료 — 차이가 있어요') +
+      diffHtml('현금', record.diffCash) + diffHtml('터치앤고', record.diffTng);
+    box.style.display = 'block';
+    loadSettlementStatus();
+    loadSettlementHistory();
+    buildReport(record);
+  });
+
+  async function loadSettlementHistory() {
+    var list = await api('/api/admin/settlements');
+    document.getElementById('settlementRows').innerHTML = list.slice(0, 10).map(function (r) {
+      return '<tr><td>' + r.date + '</td>' +
+        '<td class="' + (Math.abs(r.diffCash) < 0.01 ? 'diff-ok' : 'diff-off') + '">' + fmt(r.diffCash) + '</td>' +
+        '<td class="' + (Math.abs(r.diffTng) < 0.01 ? 'diff-ok' : 'diff-off') + '">' + fmt(r.diffTng) + '</td></tr>';
+    }).join('') || '<tr><td colspan="3">정산 기록 없음</td></tr>';
+  }
 
   // ---------- Summary ----------
   function isoWeekLabel(dateStr) {
@@ -237,22 +397,22 @@
   async function loadSummary() {
     var days = await api('/api/admin/summary');
     lastDays = days;
-    var today = new Date().toISOString().slice(0, 10);
-    var t = days.find(function (d) { return d.date === today; }) || { revenue: 0, cost: 0, profit: 0, cash: 0, tng: 0, balance: null };
+    var today = window.cafeTime.ymd(new Date());
+    var t = days.find(function (d) { return d.date === today; }) || { revenue: 0, cost: 0, profit: 0, cash: 0, tng: 0 };
 
     document.getElementById('todayKpis').innerHTML =
       '<div class="kpi-card"><div class="label">오늘 매출</div><div class="value">' + fmt(t.revenue) + '</div></div>' +
       '<div class="kpi-card"><div class="label">오늘 구매·지출</div><div class="value">' + fmt(t.cost) + '</div></div>' +
-      '<div class="kpi-card"><div class="label">오늘 손익</div><div class="value">' + fmt(t.profit) + '</div></div>' +
-      '<div class="kpi-card"><div class="label">현재 잔액</div><div class="value">' + fmt(t.balance != null ? t.balance : 0) + '</div></div>';
+      '<div class="kpi-card"><div class="label">오늘 손익</div><div class="value">' + fmt(t.profit) + '</div></div>';
 
     document.getElementById('payKpis').innerHTML =
       '<div class="kpi-card"><div class="label">💵 오늘 현금 매출</div><div class="value">' + fmt(t.cash) + '</div></div>' +
-      '<div class="kpi-card"><div class="label">📱 오늘 터치앤고 매출</div><div class="value">' + fmt(t.tng) + '</div></div>';
+      '<div class="kpi-card"><div class="label">📱 오늘 터치앤고 매출</div><div class="value">' + fmt(t.tng || 0) + '</div></div>' +
+      '<div class="kpi-card"><div class="label">🙏 오늘 Free 제공</div><div class="value">' + fmt(t.free || 0) + '</div></div>';
 
     document.getElementById('summaryRows').innerHTML = days.map(function (d) {
       return '<tr><td>' + d.date + '</td><td>' + fmt(d.revenue) + '</td><td>' + fmt(d.cash) + '</td><td>' + fmt(d.tng) + '</td>' +
-        '<td>' + fmt(d.cost) + '</td><td>' + fmt(d.profit) + '</td><td>' + fmt(d.balance) + '</td></tr>';
+        '<td>' + fmt(d.free || 0) + '</td><td>' + fmt(d.cost) + '</td><td>' + fmt(d.profit) + '</td></tr>';
     }).join('') || '<tr><td colspan="7">데이터 없음</td></tr>';
 
     renderChart();
@@ -283,11 +443,11 @@
     lastOrders.forEach(function (o) {
       var desc = o.items.map(function (i) { return i.name + ' x' + i.qty; }).join(', ');
       rows.push([
-        o.createdAt.slice(0, 10), o.createdAt.slice(11, 19), o.createdAt,
+        window.cafeTime.ymd(o.createdAt), window.cafeTime.hms(o.createdAt), o.createdAt,
         desc, o.pay || '', o.device || '', o.total, o.status || ''
       ]);
     });
-    downloadCsv('주문내역_' + new Date().toISOString().slice(0, 10) + '.csv', rows);
+    downloadCsv('주문내역_' + window.cafeTime.ymd(new Date()) + '.csv', rows);
   });
 
   document.getElementById('expensesCsvBtn').addEventListener('click', function () {
@@ -295,7 +455,7 @@
     lastExpenses.forEach(function (e) {
       rows.push([e.date, e.category, e.amount, e.memo || '', e.author || '']);
     });
-    downloadCsv('구매지출내역_' + new Date().toISOString().slice(0, 10) + '.csv', rows);
+    downloadCsv('구매지출내역_' + window.cafeTime.ymd(new Date()) + '.csv', rows);
   });
 
   // ---------- Orders ----------
@@ -306,7 +466,7 @@
     lastOrders = orders;
     document.getElementById('ordersRows').innerHTML = orders.map(function (o) {
       var desc = o.items.map(function (i) { return i.name + ' x' + i.qty; }).join(', ');
-      var time = o.createdAt.slice(11, 19);
+      var time = window.cafeTime.hms(o.createdAt);
       return '<tr><td>' + time + '</td><td>' + desc + '</td><td>' + (o.pay || '-') + '</td><td>' + (o.device || '-') + '</td><td>' + fmt(o.total) + '</td>' +
         '<td><button class="btn-small btn-danger" data-id="' + o.id + '">삭제</button></td></tr>';
     }).join('') || '<tr><td colspan="6">주문 없음</td></tr>';
@@ -489,7 +649,8 @@
     loadMenu();
   });
 
-  loadSettings();
+  loadSettlementStatus();
+  loadSettlementHistory();
   loadSummary();
   loadOrders();
   loadExpenses();
