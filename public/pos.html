@@ -9,8 +9,21 @@
 <body>
 <header>
   <h1>☕ 주섬주섬 카페</h1>
-  <span id="clock"></span>
+  <div style="display:flex; align-items:center; gap:12px;">
+    <span id="recentBtn" style="cursor:pointer; font-size:12px; text-decoration:underline;">📋 오늘 주문</span>
+    <span id="clock"></span>
+  </div>
 </header>
+
+<div id="recentOverlay" class="recent-overlay" hidden>
+  <div class="recent-panel">
+    <div class="recent-head">
+      <h2>오늘 주문 내역</h2>
+      <span id="recentClose" class="clear">닫기 ✕</span>
+    </div>
+    <div class="recent-body" id="recentBody"></div>
+  </div>
+</div>
 
 <div class="layout">
   <div class="left">
@@ -181,6 +194,37 @@
     cart = {}; payMethod = null; render();
   });
   document.getElementById('submitBtn').addEventListener('click', submitOrder);
+
+  async function openRecent() {
+    var overlay = document.getElementById('recentOverlay');
+    var body = document.getElementById('recentBody');
+    overlay.hidden = false;
+    body.innerHTML = '<div class="recent-empty">불러오는 중...</div>';
+    try {
+      var res = await fetch('/api/orders?limit=50');
+      var orders = await res.json();
+      if (orders.length === 0) {
+        body.innerHTML = '<div class="recent-empty">오늘 주문이 아직 없어요</div>';
+        return;
+      }
+      body.innerHTML = orders.map(function (o) {
+        var time = o.createdAt.slice(11, 16);
+        var desc = o.items.map(function (i) { return i.name + ' x' + i.qty; }).join(', ');
+        return '<div class="recent-row"><div class="top"><span>' + time + (o.pay ? ' · ' + o.pay : '') + '</span><span>' + fmt(o.total) + '</span></div><div class="desc"></div></div>';
+      }).join('');
+      // fill descriptions as text to avoid HTML injection from stored memo/item names
+      var rows = body.querySelectorAll('.recent-row .desc');
+      orders.forEach(function (o, i) {
+        rows[i].textContent = o.items.map(function (it) { return it.name + ' x' + it.qty; }).join(', ');
+      });
+    } catch (e) {
+      body.innerHTML = '<div class="recent-empty">불러오지 못했어요</div>';
+    }
+  }
+  document.getElementById('recentBtn').addEventListener('click', openRecent);
+  document.getElementById('recentClose').addEventListener('click', function () {
+    document.getElementById('recentOverlay').hidden = true;
+  });
 
   async function init() {
     var res = await fetch('/api/menu');
