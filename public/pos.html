@@ -26,8 +26,8 @@
       <div class="nav-menu" id="navMenu" hidden>
         <a href="/">🏠 홈</a>
         <a href="/pos.html" class="current">🧾 계산대</a>
-        <a href="/entry.html">🧮 구매·지출 입력</a>
         <a href="/brew.html">🍵 브루 보드</a>
+        <a href="/entry.html">🧮 구매·지출 입력</a>
         <a href="/admin">🛠️ 관리자</a>
       </div>
     </div>
@@ -112,7 +112,7 @@
   var MENU = [];
   var cart = {};
   var payMethod = null;
-  var PAY_OPTIONS = ['현금', '터치앤고'];
+  var PAY_OPTIONS = ['현금', '터치앤고', 'Free'];
   var submitting = false;
 
   function fmt(n) {
@@ -122,7 +122,7 @@
   function renderClock() {
     var el = document.getElementById('clock');
     var d = new Date();
-    el.textContent = String(d.getHours()).padStart(2, '0') + ':' + String(d.getMinutes()).padStart(2, '0');
+    el.textContent = window.cafeTime.hm(d);
   }
 
   // Picks the largest square tile size + column count that fits every menu
@@ -232,7 +232,8 @@
     PAY_OPTIONS.forEach(function (p) {
       var chip = document.createElement('div');
       chip.className = 'pay-chip' + (payMethod === p ? ' selected' : '');
-      chip.textContent = (p === '현금' ? '💵 ' : '📱 ') + p;
+      var payIcon = p === '현금' ? '💵 ' : (p === '터치앤고' ? '📱 ' : '🙏 ');
+      chip.textContent = payIcon + p;
       chip.addEventListener('click', function () { payMethod = p; render(); });
       row.appendChild(chip);
     });
@@ -330,7 +331,7 @@
         return;
       }
       body.innerHTML = orders.map(function (o) {
-        var time = o.createdAt.slice(11, 19);
+        var time = window.cafeTime.hms(o.createdAt);
         var desc = o.items.map(function (i) { return i.name + ' x' + i.qty; }).join(', ');
         return '<div class="recent-row"><div class="top"><span>' + time + (o.pay ? ' · ' + o.pay : '') + '</span><span>' + fmt(o.total) + '</span></div><div class="desc"></div></div>';
       }).join('');
