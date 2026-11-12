@@ -57,8 +57,8 @@
       <div class="nav-menu" id="navMenu" hidden>
         <a href="/">🏠 홈</a>
         <a href="/pos.html">🧾 계산대</a>
-        <a href="/entry.html">🧮 구매·지출 입력</a>
         <a href="/brew.html" class="current">🍵 브루 보드</a>
+        <a href="/entry.html">🧮 구매·지출 입력</a>
         <a href="/admin">🛠️ 관리자</a>
       </div>
     </div>
@@ -79,7 +79,7 @@
 
   function renderClock() {
     var d = new Date();
-    document.getElementById('clock').textContent = String(d.getHours()).padStart(2, '0') + ':' + String(d.getMinutes()).padStart(2, '0');
+    document.getElementById('clock').textContent = window.cafeTime.hm(d);
   }
 
   function elapsedLabel(createdAt) {
@@ -111,7 +111,7 @@
     var cards = board.querySelectorAll('.order-card');
     visible.forEach(function (o, i) {
       var card = cards[i];
-      card.querySelector('.order-time').textContent = o.createdAt.slice(11, 16);
+      card.querySelector('.order-time').textContent = window.cafeTime.hm(o.createdAt);
       card.querySelector('.order-elapsed').textContent = elapsedLabel(o.createdAt);
       var ul = card.querySelector('.order-items');
       o.items.forEach(function (it) {
