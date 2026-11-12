@@ -138,12 +138,20 @@ header span { font-size: 12px; opacity: .85; }
 }
 .main-tab.active { background: var(--accent); border-color: var(--accent); color: var(--accent-contrast); }
 
-/* ---- 오늘 주문 history view ---- */
-#view-history { padding: 14px; max-width: 640px; margin: 0 auto; }
-.recent-panel { background: var(--surface); border: 1px solid var(--border); border-radius: 14px; overflow: hidden; }
-.recent-head { padding: 14px 16px; border-bottom: 1px solid var(--border); display: flex; align-items: center; justify-content: space-between; }
+/* ---- 오늘 주문 history view: fits the screen, only the list itself scrolls ---- */
+#view-history {
+  padding: 14px; max-width: 640px; margin: 0 auto; box-sizing: border-box;
+  height: calc(100vh - 128px - env(safe-area-inset-top, 0px) - env(safe-area-inset-bottom, 0px));
+  display: flex; flex-direction: column;
+}
+.recent-panel {
+  background: var(--surface); border: 1px solid var(--border); border-radius: 14px; overflow: hidden;
+  flex: 1 1 auto; display: flex; flex-direction: column; min-height: 0;
+}
+.recent-head { padding: 14px 16px; border-bottom: 1px solid var(--border); display: flex; align-items: center; justify-content: space-between; flex: 0 0 auto; }
 .recent-head h2 { margin: 0; font-size: 15px; font-weight: 700; }
-.recent-body { padding: 10px 16px 16px; max-height: 70vh; overflow-y: auto; }
+.recent-summary { flex: 0 0 auto; }
+.recent-body { padding: 10px 16px 16px; flex: 1 1 auto; overflow-y: auto; min-height: 0; }
 .recent-row { padding: 10px 0; border-bottom: 1px dashed var(--border); }
 .recent-row .top { display: flex; justify-content: space-between; font-size: 13px; font-weight: 600; }
 .recent-row .desc { font-size: 12px; color: var(--text-muted); margin-top: 2px; }
