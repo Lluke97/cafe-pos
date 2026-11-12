@@ -74,9 +74,18 @@ function uid() {
   return Date.now().toString(36) + Math.random().toString(36).slice(2, 8);
 }
 
+// The business runs on Malaysia time; "today" and every order's "day" are
+// always computed in Asia/Kuala_Lumpur, never the server's own UTC clock —
+// otherwise orders near midnight land on the wrong day and times look off
+// by 8 hours wherever they're shown.
+const MY_TZ = 'Asia/Kuala_Lumpur';
+const myDateFormatter = new Intl.DateTimeFormat('en-CA', { timeZone: MY_TZ, year: 'numeric', month: '2-digit', day: '2-digit' });
+function myDateStr(d) {
+  return myDateFormatter.format(d);
+}
 function todayStr(d) {
   const dt = d ? new Date(d) : new Date();
-  return dt.toISOString().slice(0, 10);
+  return myDateStr(dt);
 }
 
 // ---------------- Public pages ----------------
@@ -93,7 +102,7 @@ app.get('/api/menu', (req, res) => {
 app.get('/api/orders', (req, res) => {
   const limit = Math.min(parseInt(req.query.limit, 10) || 30, 100);
   const day = req.query.date || todayStr();
-  let orders = db.getOrders().filter((o) => o.createdAt.slice(0, 10) === day);
+  let orders = db.getOrders().filter((o) => myDateStr(new Date(o.createdAt)) === day);
   orders.sort((a, b) => b.createdAt.localeCompare(a.createdAt));
   res.json(orders.slice(0, limit));
 });
@@ -197,7 +206,11 @@ app.delete('/api/admin/menu/:id', (req, res) => {
 
 app.get('/api/admin/orders', (req, res) => {
   let orders = db.getOrders();
-  if (req.query.date) orders = orders.filter((o) => o.createdAt.slice(0, 10) === req.query.date);
+  if (req.query.date) orders = orders.filter((o) => myDateStr(new Date(o.createdAt)) === req.query.date);
+  // Range filter used by the weekly settlement report: from is exclusive
+  // (matches a settlement's "since"), to is inclusive.
+  if (req.query.from) orders = orders.filter((o) => myDateStr(new Date(o.createdAt)) > req.query.from);
+  if (req.query.to) orders = orders.filter((o) => myDateStr(new Date(o.createdAt)) <= req.query.to);
   orders.sort((a, b) => b.createdAt.localeCompare(a.createdAt));
   res.json(orders);
 });
@@ -211,6 +224,10 @@ app.delete('/api/admin/orders/:id', (req, res) => {
 app.get('/api/admin/expenses', (req, res) => {
   let expenses = db.getExpenses();
   if (req.query.date) expenses = expenses.filter((e) => e.date === req.query.date);
+  // Range filter used by the weekly settlement report: from is exclusive
+  // (matches a settlement's "since"), to is inclusive.
+  if (req.query.from) expenses = expenses.filter((e) => e.date > req.query.from);
+  if (req.query.to) expenses = expenses.filter((e) => e.date <= req.query.to);
   expenses.sort((a, b) => b.createdAt.localeCompare(a.createdAt));
   res.json(expenses);
 });
@@ -221,53 +238,99 @@ app.delete('/api/admin/expenses/:id', (req, res) => {
   res.json({ ok: true });
 });
 
-// Daily rollup: revenue (split by payment method), cost, profit, and a
-// running balance that starts from the admin-set opening balance.
+// Daily rollup: revenue (split by payment method), cost, profit.
 app.get('/api/admin/summary', (req, res) => {
   const orders = db.getOrders();
   const expenses = db.getExpenses();
-  const settings = db.getSettings();
   const byDay = {};
 
   function day(d) {
-    if (!byDay[d]) byDay[d] = { date: d, revenue: 0, cost: 0, cash: 0, tng: 0, other: 0 };
+    if (!byDay[d]) byDay[d] = { date: d, revenue: 0, cost: 0, cash: 0, tng: 0, free: 0 };
     return byDay[d];
   }
 
   orders.forEach((o) => {
-    const d = day(o.createdAt.slice(0, 10));
-    d.revenue += o.total;
-    if (o.pay === '현금') d.cash += o.total;
-    else if (o.pay === '터치앤고') d.tng += o.total;
-    else d.other += o.total;
+    const d = day(myDateStr(new Date(o.createdAt)));
+    // "Free" orders (e.g. comped coffee for pastoral staff) are tracked —
+    // but no money actually changed hands, so they don't count as revenue.
+    if (o.pay === '현금') { d.cash += o.total; d.revenue += o.total; }
+    else if (o.pay === '터치앤고') { d.tng += o.total; d.revenue += o.total; }
+    else { d.free += o.total; }
   });
   expenses.forEach((e) => { day(e.date).cost += e.amount; });
 
   const daysAsc = Object.values(byDay).sort((a, b) => a.date.localeCompare(b.date));
-  let running = settings.startingBalance || 0;
-  daysAsc.forEach((d) => {
-    d.profit = d.revenue - d.cost;
-    running += d.profit;
-    d.balance = running;
-  });
+  daysAsc.forEach((d) => { d.profit = d.revenue - d.cost; });
 
   res.json(daysAsc.slice().reverse());
 });
 
-// Opening cash balance that carries forward into the running balance above.
-app.get('/api/admin/settings', (req, res) => {
-  res.json(db.getSettings());
+// ---- Weekly cash / Touch 'n Go settlement (reconciliation) ----
+// "sinceAt" is the exact timestamp of the last settlement (or null if there
+// has never been one). Comparing full timestamps — not just the date — means
+// a second settlement done later the same day still only counts orders
+// placed after the first one, instead of double-counting or missing them.
+function recordedTotalsSince(sinceAt) {
+  const orders = db.getOrders();
+  let cash = 0, tng = 0;
+  orders.forEach((o) => {
+    if (sinceAt && o.createdAt <= sinceAt) return;
+    if (o.pay === '현금') cash += o.total;
+    else if (o.pay === '터치앤고') tng += o.total;
+  });
+  return { cash, tng };
+}
+
+// Live preview: what's recorded since the last settlement, without settling.
+app.get('/api/admin/settlement-status', (req, res) => {
+  const settings = db.getSettings();
+  const recorded = recordedTotalsSince(settings.settlement.at);
+  res.json({
+    since: settings.settlement.date,
+    lastActualCash: settings.settlement.actualCash,
+    lastActualTng: settings.settlement.actualTng,
+    recordedCash: recorded.cash,
+    recordedTng: recorded.tng
+  });
 });
 
-app.put('/api/admin/settings', (req, res) => {
-  const { startingBalance } = req.body || {};
-  if (typeof startingBalance !== 'number' || Number.isNaN(startingBalance)) {
-    return res.status(400).json({ error: 'startingBalance must be a number' });
+// The owner counts the real drawer + checks the Touch 'n Go balance and
+// submits both here. We compare against what the system recorded since the
+// last settlement, log the result, and this becomes the new baseline.
+app.post('/api/admin/settlement', (req, res) => {
+  const { actualCash, actualTng } = req.body || {};
+  if (typeof actualCash !== 'number' || typeof actualTng !== 'number' || Number.isNaN(actualCash) || Number.isNaN(actualTng)) {
+    return res.status(400).json({ error: 'actualCash and actualTng must both be numbers' });
   }
   const settings = db.getSettings();
-  settings.startingBalance = startingBalance;
+  const since = settings.settlement.date;
+  const recorded = recordedTotalsSince(settings.settlement.at);
+  const nowIso = new Date().toISOString();
+  const record = {
+    id: uid(),
+    createdAt: nowIso,
+    date: todayStr(),
+    since,
+    recordedCash: recorded.cash,
+    recordedTng: recorded.tng,
+    actualCash,
+    actualTng,
+    diffCash: actualCash - recorded.cash,
+    diffTng: actualTng - recorded.tng
+  };
+  const settlements = db.getSettlements();
+  settlements.push(record);
+  db.saveSettlements(settlements);
+
+  settings.settlement = { at: nowIso, date: record.date, actualCash, actualTng };
   db.saveSettings(settings);
-  res.json(settings);
+
+  res.status(201).json(record);
+});
+
+app.get('/api/admin/settlements', (req, res) => {
+  const settlements = db.getSettlements().slice().sort((a, b) => b.createdAt.localeCompare(a.createdAt));
+  res.json(settlements);
 });
 
 // Admin page itself needs the same auth before the browser even gets the HTML.
