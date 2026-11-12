@@ -102,12 +102,27 @@ app.post('/api/orders', (req, res) => {
     items,
     total,
     pay: pay || null,
-    cashier: cashier || null
+    cashier: cashier || null,
+    status: 'new' // 'new' | 'done' — used by the Brew Board
   };
   const orders = db.getOrders();
   orders.push(order);
   db.saveOrders(orders);
   res.status(201).json(order);
+});
+
+// Brew Board: staff mark an order done (or back to new), no login needed.
+app.post('/api/orders/:id/status', (req, res) => {
+  const { status } = req.body || {};
+  if (status !== 'new' && status !== 'done') {
+    return res.status(400).json({ error: 'status must be "new" or "done"' });
+  }
+  const orders = db.getOrders();
+  const idx = orders.findIndex((o) => o.id === req.params.id);
+  if (idx === -1) return res.status(404).json({ error: 'not found' });
+  orders[idx].status = status;
+  db.saveOrders(orders);
+  res.json(orders[idx]);
 });
 
 // Staff logs a purchase or an expense from the entry screen.
