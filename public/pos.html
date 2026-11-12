@@ -9,7 +9,18 @@
 <body>
 <header>
   <h1>☕ 주섬주섬 카페</h1>
-  <span id="clock"></span>
+  <div class="header-right">
+    <span id="clock"></span>
+    <div class="nav-wrap">
+      <button class="nav-btn" id="navBtn">☰</button>
+      <div class="nav-menu" id="navMenu" hidden>
+        <a href="/">🏠 홈</a>
+        <a href="/pos.html" class="current">🧾 계산대</a>
+        <a href="/entry.html">🧮 구매·지출 입력</a>
+        <a href="/admin">🛠️ 관리자</a>
+      </div>
+    </div>
+  </div>
 </header>
 
 <div class="main-tabs">
@@ -47,6 +58,7 @@
       <h2>오늘 주문 내역</h2>
       <span id="recentRefresh" class="clear">새로고침 ↻</span>
     </div>
+    <div class="recent-summary" id="recentSummary"></div>
     <div class="recent-body" id="recentBody"></div>
   </div>
 </div>
@@ -199,12 +211,36 @@
   });
   document.getElementById('submitBtn').addEventListener('click', submitOrder);
 
+  function renderSummary(orders) {
+    var summaryEl = document.getElementById('recentSummary');
+    var totalRevenue = orders.reduce(function (s, o) { return s + o.total; }, 0);
+    var counts = {}; // name -> { qty, amount }
+    orders.forEach(function (o) {
+      o.items.forEach(function (it) {
+        if (!counts[it.name]) counts[it.name] = { qty: 0, amount: 0 };
+        counts[it.name].qty += it.qty;
+        counts[it.name].amount += it.price * it.qty;
+      });
+    });
+    var names = Object.keys(counts).sort(function (a, b) { return counts[b].qty - counts[a].qty; });
+    var rowsHtml = names.map(function (name) {
+      return '<tr><td></td><td class="qty">' + counts[name].qty + '개</td><td class="amt">' + fmt(counts[name].amount) + '</td></tr>';
+    }).join('');
+    summaryEl.innerHTML =
+      '<div class="big-total-label">오늘 전체 매출</div>' +
+      '<div class="big-total">' + fmt(totalRevenue) + '</div>' +
+      '<table class="item-count-table"><tbody>' + rowsHtml + '</tbody></table>';
+    var nameCells = summaryEl.querySelectorAll('.item-count-table td:first-child');
+    names.forEach(function (name, i) { nameCells[i].textContent = name; });
+  }
+
   async function loadRecent() {
     var body = document.getElementById('recentBody');
     body.innerHTML = '<div class="recent-empty">불러오는 중...</div>';
     try {
       var res = await fetch('/api/orders?limit=50');
       var orders = await res.json();
+      renderSummary(orders);
       if (orders.length === 0) {
         body.innerHTML = '<div class="recent-empty">오늘 주문이 아직 없어요</div>';
         return;
@@ -224,6 +260,14 @@
     }
   }
   document.getElementById('recentRefresh').addEventListener('click', loadRecent);
+
+  document.getElementById('navBtn').addEventListener('click', function (e) {
+    e.stopPropagation();
+    document.getElementById('navMenu').hidden = !document.getElementById('navMenu').hidden;
+  });
+  document.addEventListener('click', function () {
+    document.getElementById('navMenu').hidden = true;
+  });
 
   document.querySelectorAll('.main-tab').forEach(function (tab) {
     tab.addEventListener('click', function () {
