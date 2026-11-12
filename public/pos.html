@@ -3,18 +3,17 @@
 <head>
 <meta charset="utf-8">
 <meta name="viewport" content="width=device-width, initial-scale=1, viewport-fit=cover">
-<title>카페 POS</title>
+<title>주섬주섬 카페</title>
 <link rel="stylesheet" href="style.css">
 </head>
 <body>
 <header>
-  <h1>☕ Luke's Cafe POS</h1>
+  <h1>☕ 주섬주섬 카페</h1>
   <span id="clock"></span>
 </header>
 
 <div class="layout">
   <div class="left">
-    <div class="tabs" id="tabs"></div>
     <div class="grid" id="grid"></div>
   </div>
 
@@ -37,8 +36,6 @@
 
 <script>
   var MENU = [];
-  var CATEGORIES = [];
-  var activeCat = null;
   var cart = {};
   var payMethod = null;
   var PAY_OPTIONS = ['현금', '터치앤고'];
@@ -54,22 +51,10 @@
     el.textContent = String(d.getHours()).padStart(2, '0') + ':' + String(d.getMinutes()).padStart(2, '0');
   }
 
-  function renderTabs() {
-    var tabs = document.getElementById('tabs');
-    tabs.innerHTML = '';
-    CATEGORIES.forEach(function (c) {
-      var t = document.createElement('div');
-      t.className = 'tab' + (activeCat === c ? ' active' : '');
-      t.textContent = c;
-      t.addEventListener('click', function () { activeCat = c; render(); });
-      tabs.appendChild(t);
-    });
-  }
-
   function renderGrid() {
     var grid = document.getElementById('grid');
     grid.innerHTML = '';
-    MENU.filter(function (it) { return it.category === activeCat; }).forEach(function (it) {
+    MENU.forEach(function (it) {
       var btn = document.createElement('div');
       btn.className = 'item-btn';
       btn.innerHTML =
@@ -155,7 +140,6 @@
   }
 
   function render() {
-    renderTabs();
     renderGrid();
     renderTicket();
     renderPay();
@@ -201,8 +185,6 @@
   async function init() {
     var res = await fetch('/api/menu');
     MENU = await res.json();
-    CATEGORIES = Array.from(new Set(MENU.map(function (it) { return it.category; })));
-    activeCat = CATEGORIES[0] || null;
     renderClock();
     setInterval(renderClock, 30000);
     render();
