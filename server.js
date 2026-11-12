@@ -50,6 +50,15 @@ app.get('/api/menu', (req, res) => {
   res.json(db.getMenu());
 });
 
+// Staff can see today's orders from the till screen itself (read-only, no login).
+app.get('/api/orders', (req, res) => {
+  const limit = Math.min(parseInt(req.query.limit, 10) || 30, 100);
+  const day = req.query.date || todayStr();
+  let orders = db.getOrders().filter((o) => o.createdAt.slice(0, 10) === day);
+  orders.sort((a, b) => b.createdAt.localeCompare(a.createdAt));
+  res.json(orders.slice(0, limit));
+});
+
 // Staff places an order from the till screen.
 app.post('/api/orders', (req, res) => {
   const { items, total, pay, cashier } = req.body || {};
