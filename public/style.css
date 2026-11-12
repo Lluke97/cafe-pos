@@ -148,6 +148,31 @@ header span { font-size: 12px; opacity: .85; }
 .recent-row .top { display: flex; justify-content: space-between; font-size: 13px; font-weight: 600; }
 .recent-row .desc { font-size: 12px; color: var(--text-muted); margin-top: 2px; }
 .recent-empty { color: var(--text-muted); font-size: 13px; text-align: center; padding: 30px 0; }
+.recent-summary { padding: 14px 16px; border-bottom: 1px solid var(--border); background: var(--surface-2); }
+.recent-summary .big-total { font-size: 24px; font-weight: 700; font-family: var(--font-anthropic-serif, inherit); }
+.recent-summary .big-total-label { font-size: 12px; color: var(--text-muted); }
+.item-count-table { width: 100%; margin-top: 10px; font-size: 13px; }
+.item-count-table td { padding: 4px 0; border-bottom: 1px dashed var(--border); }
+.item-count-table td.qty { text-align: center; color: var(--text-muted); }
+.item-count-table td.amt { text-align: right; font-variant-numeric: tabular-nums; }
+
+/* ---- nav menu (header) for jumping between pages ---- */
+.nav-wrap { position: relative; }
+.nav-btn {
+  background: transparent; border: none; color: inherit; font-size: 20px; line-height: 1;
+  cursor: pointer; padding: 2px 6px; -webkit-tap-highlight-color: transparent;
+}
+.nav-menu {
+  position: absolute; top: 32px; right: 0; background: var(--surface); border: 1px solid var(--border);
+  border-radius: 10px; box-shadow: var(--shadow); overflow: hidden; min-width: 170px; z-index: 30;
+}
+.nav-menu a {
+  display: block; padding: 11px 14px; color: var(--text); text-decoration: none;
+  font-size: 13px; font-weight: 600;
+}
+.nav-menu a:hover, .nav-menu a:active { background: var(--surface-2); }
+.nav-menu a.current { color: var(--accent); }
+.header-right { display: flex; align-items: center; gap: 12px; }
 
 /* ---- used by entry.html / admin.html forms ---- */
 .form-card { background: var(--surface); border: 1px solid var(--border); border-radius: 14px; padding: 16px; max-width: 460px; margin: 16px auto; }
