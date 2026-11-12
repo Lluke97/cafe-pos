@@ -342,6 +342,58 @@ app.get('/api/admin/settlements', (req, res) => {
   res.json(settlements);
 });
 
+// Fix a mistyped settlement. The recorded/expected figures from when it was
+// first settled are kept as-is (they reflect that moment); only the actual
+// counted amounts and the diff change. If this is the current baseline
+// settlement, the live baseline is updated too so future settlements stay correct.
+app.put('/api/admin/settlements/:id', (req, res) => {
+  const { actualCash, actualTng } = req.body || {};
+  if (typeof actualCash !== 'number' || typeof actualTng !== 'number' || Number.isNaN(actualCash) || Number.isNaN(actualTng)) {
+    return res.status(400).json({ error: 'actualCash and actualTng must both be numbers' });
+  }
+  const settlements = db.getSettlements();
+  const rec = settlements.find((s) => s.id === req.params.id);
+  if (!rec) return res.status(404).json({ error: 'not found' });
+
+  const expectedCash = rec.expectedCash != null ? rec.expectedCash : (rec.prevCash || 0) + rec.recordedCash;
+  const expectedTng = rec.expectedTng != null ? rec.expectedTng : (rec.prevTng || 0) + rec.recordedTng;
+  rec.actualCash = actualCash;
+  rec.actualTng = actualTng;
+  rec.expectedCash = expectedCash;
+  rec.expectedTng = expectedTng;
+  rec.diffCash = actualCash - expectedCash;
+  rec.diffTng = actualTng - expectedTng;
+  db.saveSettlements(settlements);
+
+  const settings = db.getSettings();
+  if (settings.settlement.at === rec.createdAt) {
+    settings.settlement.actualCash = actualCash;
+    settings.settlement.actualTng = actualTng;
+    db.saveSettings(settings);
+  }
+  res.json(rec);
+});
+
+// Deleting the current baseline settlement falls back to the next most
+// recent one (or resets to zero if none are left), so future settlements
+// still compare against something sensible.
+app.delete('/api/admin/settlements/:id', (req, res) => {
+  const settlements = db.getSettlements();
+  const rec = settlements.find((s) => s.id === req.params.id);
+  const remaining = settlements.filter((s) => s.id !== req.params.id);
+  db.saveSettlements(remaining);
+
+  const settings = db.getSettings();
+  if (rec && settings.settlement.at === rec.createdAt) {
+    const sorted = remaining.slice().sort((a, b) => b.createdAt.localeCompare(a.createdAt));
+    settings.settlement = sorted.length > 0
+      ? { at: sorted[0].createdAt, date: sorted[0].date, actualCash: sorted[0].actualCash, actualTng: sorted[0].actualTng }
+      : { at: null, date: null, actualCash: 0, actualTng: 0 };
+    db.saveSettings(settings);
+  }
+  res.json({ ok: true });
+});
+
 // Admin page itself needs the same auth before the browser even gets the HTML.
 app.get('/admin', requireAdmin, (req, res) => {
   res.sendFile(path.join(__dirname, 'public-admin', 'admin.html'));
