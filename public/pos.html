@@ -145,6 +145,13 @@
       var totalH = rows * tileW + gap * (rows - 1);
       if (totalH <= H && tileW > bestTile) { bestTile = tileW; bestCols = cols; }
     }
+    var MAX_TILE_PX = 150; // keep tiles from ballooning when there's lots of spare room
+    if (bestTile > MAX_TILE_PX) {
+      // Not just a font-size cap — recompute columns so tiles are actually
+      // this size, not just stretched squares with small text floating in them.
+      bestCols = Math.max(1, Math.ceil((W + gap) / (MAX_TILE_PX + gap)));
+      bestTile = (W - gap * (bestCols - 1)) / bestCols;
+    }
     if (bestTile === 0) {
       // Too many items for this screen even at a sane minimum — fall back
       // to a reasonable column count; .left can still scroll as a last resort.
@@ -232,8 +239,10 @@
     PAY_OPTIONS.forEach(function (p) {
       var chip = document.createElement('div');
       chip.className = 'pay-chip' + (payMethod === p ? ' selected' : '');
-      var payIcon = p === '현금' ? '💵 ' : (p === '터치앤고' ? '📱 ' : '🙏 ');
-      chip.textContent = payIcon + p;
+      var payIcon = p === '현금' ? '💵' : (p === '터치앤고' ? '📱' : '🙏');
+      chip.innerHTML = '<span class="pay-chip-emoji"></span><span></span>';
+      chip.querySelector('.pay-chip-emoji').textContent = payIcon;
+      chip.querySelector('span:last-child').textContent = p;
       chip.addEventListener('click', function () { payMethod = p; render(); });
       row.appendChild(chip);
     });
