@@ -41,6 +41,8 @@ const DEFAULT_MENU = [
   { id: 'cookie', name: 'Cookie',       emoji: '🍪',   price: 10.00, category: '디저트' }
 ];
 
+const DEFAULT_SETTINGS = { startingBalance: 0 };
+
 module.exports = {
   getMenu: () => readJSON('menu', DEFAULT_MENU),
   saveMenu: (menu) => writeJSON('menu', menu),
@@ -49,5 +51,8 @@ module.exports = {
   saveOrders: (orders) => writeJSON('orders', orders),
 
   getExpenses: () => readJSON('expenses', []),
-  saveExpenses: (expenses) => writeJSON('expenses', expenses)
+  saveExpenses: (expenses) => writeJSON('expenses', expenses),
+
+  getSettings: () => Object.assign({}, DEFAULT_SETTINGS, readJSON('settings', DEFAULT_SETTINGS)),
+  saveSettings: (settings) => writeJSON('settings', settings)
 };
