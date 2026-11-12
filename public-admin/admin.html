@@ -5,11 +5,20 @@
 <meta name="viewport" content="width=device-width, initial-scale=1, viewport-fit=cover">
 <title>주섬주섬 카페 관리자</title>
 <link rel="stylesheet" href="/style.css">
+<script src="https://cdn.jsdelivr.net/npm/chart.js@4.4.4/dist/chart.umd.min.js"></script>
 <style>
   .hidden { display: none !important; }
   .row-actions { display: flex; gap: 6px; }
   .menu-form-row { display: flex; gap: 8px; flex-wrap: wrap; align-items: flex-end; margin-bottom: 16px; }
   .menu-form-row .field { margin-bottom: 0; flex: 1; min-width: 110px; }
+  .settings-card { background: var(--surface); border: 1px solid var(--border); border-radius: 12px; padding: 14px; margin: 16px; display: flex; gap: 10px; align-items: flex-end; flex-wrap: wrap; }
+  .settings-card .field { margin-bottom: 0; max-width: 200px; }
+  .chip-toggle { display: flex; gap: 6px; margin: 16px 16px 0; }
+  .chip-toggle .chip { padding: 7px 14px; border-radius: 999px; border: 1px solid var(--border); background: var(--surface); font-size: 12px; font-weight: 600; cursor: pointer; color: var(--text-muted); }
+  .chip-toggle .chip.selected { background: var(--accent); border-color: var(--accent); color: var(--accent-contrast); }
+  .chart-card { background: var(--surface); border: 1px solid var(--border); border-radius: 12px; padding: 14px; margin: 10px 16px 0; }
+  .menu-edit-row input { width: 100%; }
+  .inline-save { color: var(--ok); }
 </style>
 </head>
 <body>
@@ -24,8 +33,27 @@
 
 <section id="tab-summary" class="admin-section">
   <div class="kpi-row" id="todayKpis"></div>
-  <table class="admin-table">
-    <thead><tr><th>날짜</th><th>매출</th><th>구매·지출</th><th>손익</th></tr></thead>
+  <div class="kpi-row" id="payKpis"></div>
+
+  <div class="settings-card">
+    <div class="field">
+      <label>이월 금액 (시작 현금 잔액, RM)</label>
+      <input type="number" id="startingBalance" step="0.01" placeholder="예: 500.00">
+    </div>
+    <button id="saveBalanceBtn" class="btn-small">저장</button>
+    <span id="balanceSaved" class="inline-save" style="display:none; font-size:12px;">저장됐어요 ✓</span>
+  </div>
+
+  <div class="chip-toggle" id="chartToggle">
+    <div class="chip selected" data-mode="week">주간</div>
+    <div class="chip" data-mode="month">월간</div>
+  </div>
+  <div class="chart-card">
+    <canvas id="revenueChart" height="110"></canvas>
+  </div>
+
+  <table class="admin-table" style="margin:16px;">
+    <thead><tr><th>날짜</th><th>매출</th><th>현금</th><th>터치앤고</th><th>구매·지출</th><th>손익</th><th>잔액</th></tr></thead>
     <tbody id="summaryRows"></tbody>
   </table>
 </section>
@@ -91,23 +119,111 @@
     return res.json();
   }
 
+  var lastDays = [];
+  var chartMode = 'week';
+  var chartInstance = null;
+
+  // ---------- Settings (이월 금액) ----------
+  async function loadSettings() {
+    var s = await api('/api/admin/settings');
+    document.getElementById('startingBalance').value = s.startingBalance || 0;
+  }
+  document.getElementById('saveBalanceBtn').addEventListener('click', async function () {
+    var val = parseFloat(document.getElementById('startingBalance').value) || 0;
+    await fetch('/api/admin/settings', {
+      method: 'PUT',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify({ startingBalance: val })
+    });
+    var badge = document.getElementById('balanceSaved');
+    badge.style.display = 'inline';
+    setTimeout(function () { badge.style.display = 'none'; }, 2000);
+    loadSummary();
+  });
+
   // ---------- Summary ----------
+  function isoWeekLabel(dateStr) {
+    var d = new Date(dateStr + 'T00:00:00Z');
+    var day = (d.getUTCDay() + 6) % 7; // Monday = 0
+    d.setUTCDate(d.getUTCDate() - day);
+    var mm = String(d.getUTCMonth() + 1).padStart(2, '0');
+    var dd = String(d.getUTCDate()).padStart(2, '0');
+    return mm + '/' + dd + ' 주';
+  }
+  function monthLabel(dateStr) { return dateStr.slice(0, 7); }
+
+  function aggregate(days, mode) {
+    var buckets = {};
+    var order = [];
+    days.slice().reverse().forEach(function (d) { // ascending for chart order
+      var key = mode === 'week' ? isoWeekLabel(d.date) : monthLabel(d.date);
+      if (!buckets[key]) { buckets[key] = { revenue: 0, cost: 0 }; order.push(key); }
+      buckets[key].revenue += d.revenue;
+      buckets[key].cost += d.cost;
+    });
+    return {
+      labels: order,
+      revenue: order.map(function (k) { return buckets[k].revenue; }),
+      cost: order.map(function (k) { return buckets[k].cost; })
+    };
+  }
+
+  function renderChart() {
+    var agg = aggregate(lastDays, chartMode);
+    var ctx = document.getElementById('revenueChart').getContext('2d');
+    if (chartInstance) chartInstance.destroy();
+    chartInstance = new Chart(ctx, {
+      type: 'bar',
+      data: {
+        labels: agg.labels,
+        datasets: [
+          { label: '매출', data: agg.revenue, backgroundColor: '#7a4a2b' },
+          { label: '구매·지출', data: agg.cost, backgroundColor: '#cfa98b' }
+        ]
+      },
+      options: {
+        responsive: true,
+        scales: { y: { beginAtZero: true } },
+        plugins: { legend: { position: 'bottom' } }
+      }
+    });
+  }
+
+  document.querySelectorAll('#chartToggle .chip').forEach(function (chip) {
+    chip.addEventListener('click', function () {
+      document.querySelectorAll('#chartToggle .chip').forEach(function (c) { c.classList.remove('selected'); });
+      chip.classList.add('selected');
+      chartMode = chip.getAttribute('data-mode');
+      renderChart();
+    });
+  });
+
   async function loadSummary() {
     var days = await api('/api/admin/summary');
+    lastDays = days;
     var today = new Date().toISOString().slice(0, 10);
-    var t = days.find(function (d) { return d.date === today; }) || { revenue: 0, cost: 0, profit: 0 };
+    var t = days.find(function (d) { return d.date === today; }) || { revenue: 0, cost: 0, profit: 0, cash: 0, tng: 0, balance: null };
+
     document.getElementById('todayKpis').innerHTML =
       '<div class="kpi-card"><div class="label">오늘 매출</div><div class="value">' + fmt(t.revenue) + '</div></div>' +
       '<div class="kpi-card"><div class="label">오늘 구매·지출</div><div class="value">' + fmt(t.cost) + '</div></div>' +
-      '<div class="kpi-card"><div class="label">오늘 손익</div><div class="value">' + fmt(t.profit) + '</div></div>';
+      '<div class="kpi-card"><div class="label">오늘 손익</div><div class="value">' + fmt(t.profit) + '</div></div>' +
+      '<div class="kpi-card"><div class="label">현재 잔액</div><div class="value">' + fmt(t.balance != null ? t.balance : 0) + '</div></div>';
+
+    document.getElementById('payKpis').innerHTML =
+      '<div class="kpi-card"><div class="label">💵 오늘 현금 매출</div><div class="value">' + fmt(t.cash) + '</div></div>' +
+      '<div class="kpi-card"><div class="label">📱 오늘 터치앤고 매출</div><div class="value">' + fmt(t.tng) + '</div></div>';
+
     document.getElementById('summaryRows').innerHTML = days.map(function (d) {
-      return '<tr><td>' + d.date + '</td><td>' + fmt(d.revenue) + '</td><td>' + fmt(d.cost) + '</td><td>' + fmt(d.profit) + '</td></tr>';
-    }).join('') || '<tr><td colspan="4">데이터 없음</td></tr>';
+      return '<tr><td>' + d.date + '</td><td>' + fmt(d.revenue) + '</td><td>' + fmt(d.cash) + '</td><td>' + fmt(d.tng) + '</td>' +
+        '<td>' + fmt(d.cost) + '</td><td>' + fmt(d.profit) + '</td><td>' + fmt(d.balance) + '</td></tr>';
+    }).join('') || '<tr><td colspan="7">데이터 없음</td></tr>';
+
+    renderChart();
   }
 
   // ---------- CSV export ----------
   function downloadCsv(filename, rows) {
-    // rows: array of arrays (first row = header). Excel opens UTF-8 CSV fine with a BOM.
     var csv = rows.map(function (row) {
       return row.map(function (cell) {
         var s = String(cell == null ? '' : cell);
@@ -185,21 +301,79 @@
   }
   document.getElementById('expensesDate').addEventListener('change', loadExpenses);
 
-  // ---------- Menu ----------
-  async function loadMenu() {
-    var menu = await api('/api/admin/menu');
-    document.getElementById('menuRows').innerHTML = menu.map(function (m) {
-      return '<tr><td>' + m.emoji + '</td><td>' + m.name + '</td><td>' + m.category + '</td><td>' + fmt(m.price) + '</td>' +
-        '<td><button class="btn-small btn-danger" data-id="' + m.id + '">삭제</button></td></tr>';
-    }).join('') || '<tr><td colspan="5">메뉴 없음</td></tr>';
-    document.querySelectorAll('#menuRows button').forEach(function (b) {
+  // ---------- Menu (with inline edit) ----------
+  var menuCache = [];
+
+  function menuRowHtml(m) {
+    return '<tr data-id="' + m.id + '">' +
+      '<td>' + m.emoji + '</td><td>' + m.name + '</td><td>' + m.category + '</td><td>' + fmt(m.price) + '</td>' +
+      '<td class="row-actions">' +
+        '<button class="btn-small" data-edit="' + m.id + '">수정</button>' +
+        '<button class="btn-small btn-danger" data-del="' + m.id + '">삭제</button>' +
+      '</td></tr>';
+  }
+
+  function menuEditRowHtml(m) {
+    return '<tr data-id="' + m.id + '" class="menu-edit-row">' +
+      '<td><input value="' + m.emoji.replace(/"/g, '&quot;') + '" data-f="emoji" style="width:50px"></td>' +
+      '<td><input value="' + m.name.replace(/"/g, '&quot;') + '" data-f="name"></td>' +
+      '<td><input value="' + m.category.replace(/"/g, '&quot;') + '" data-f="category"></td>' +
+      '<td><input type="number" step="0.01" value="' + m.price + '" data-f="price" style="width:80px"></td>' +
+      '<td class="row-actions">' +
+        '<button class="btn-small inline-save" data-save="' + m.id + '">저장</button>' +
+        '<button class="btn-small" data-cancel="' + m.id + '">취소</button>' +
+      '</td></tr>';
+  }
+
+  function bindMenuRowEvents() {
+    document.querySelectorAll('#menuRows button[data-edit]').forEach(function (b) {
+      b.addEventListener('click', function () {
+        var id = b.getAttribute('data-edit');
+        var m = menuCache.find(function (x) { return x.id === id; });
+        var tr = document.querySelector('#menuRows tr[data-id="' + id + '"]');
+        tr.outerHTML = menuEditRowHtml(m);
+        bindMenuRowEvents();
+      });
+    });
+    document.querySelectorAll('#menuRows button[data-cancel]').forEach(function (b) {
+      b.addEventListener('click', function () { renderMenuTable(); });
+    });
+    document.querySelectorAll('#menuRows button[data-save]').forEach(function (b) {
+      b.addEventListener('click', async function () {
+        var id = b.getAttribute('data-save');
+        var tr = document.querySelector('#menuRows tr[data-id="' + id + '"]');
+        var emoji = tr.querySelector('[data-f="emoji"]').value.trim() || '🍽️';
+        var name = tr.querySelector('[data-f="name"]').value.trim();
+        var category = tr.querySelector('[data-f="category"]').value.trim() || '기타';
+        var price = parseFloat(tr.querySelector('[data-f="price"]').value);
+        if (!name || !price) return alert('이름과 가격을 입력해주세요');
+        await fetch('/api/admin/menu/' + id, {
+          method: 'PUT',
+          headers: { 'Content-Type': 'application/json' },
+          body: JSON.stringify({ name: name, emoji: emoji, category: category, price: price })
+        });
+        loadMenu();
+      });
+    });
+    document.querySelectorAll('#menuRows button[data-del]').forEach(function (b) {
       b.addEventListener('click', async function () {
         if (!confirm('이 메뉴를 삭제할까요?')) return;
-        await fetch('/api/admin/menu/' + b.getAttribute('data-id'), { method: 'DELETE' });
+        await fetch('/api/admin/menu/' + b.getAttribute('data-del'), { method: 'DELETE' });
         loadMenu();
       });
     });
   }
+
+  function renderMenuTable() {
+    document.getElementById('menuRows').innerHTML = menuCache.map(menuRowHtml).join('') || '<tr><td colspan="5">메뉴 없음</td></tr>';
+    bindMenuRowEvents();
+  }
+
+  async function loadMenu() {
+    menuCache = await api('/api/admin/menu');
+    renderMenuTable();
+  }
+
   document.getElementById('mAddBtn').addEventListener('click', async function () {
     var name = document.getElementById('mName').value.trim();
     var price = parseFloat(document.getElementById('mPrice').value);
@@ -218,6 +392,7 @@
     loadMenu();
   });
 
+  loadSettings();
   loadSummary();
   loadOrders();
   loadExpenses();
