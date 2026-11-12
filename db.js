@@ -41,7 +41,11 @@ const DEFAULT_MENU = [
   { id: 'cookie', name: 'Cookie',       emoji: '🍪',   price: 10.00, category: '디저트' }
 ];
 
-const DEFAULT_SETTINGS = { startingBalance: 0 };
+// `settlement` is the last time the owner actually counted the cash drawer
+// and checked the Touch 'n Go balance: { date, actualCash, actualTng }.
+// Everything since that date is "unsettled" — compared against what the
+// system recorded — until the next settlement resets the baseline.
+const DEFAULT_SETTINGS = { settlement: { at: null, date: null, actualCash: 0, actualTng: 0 } };
 
 module.exports = {
   getMenu: () => readJSON('menu', DEFAULT_MENU),
@@ -54,5 +58,8 @@ module.exports = {
   saveExpenses: (expenses) => writeJSON('expenses', expenses),
 
   getSettings: () => Object.assign({}, DEFAULT_SETTINGS, readJSON('settings', DEFAULT_SETTINGS)),
-  saveSettings: (settings) => writeJSON('settings', settings)
+  saveSettings: (settings) => writeJSON('settings', settings),
+
+  getSettlements: () => readJSON('settlements', []),
+  saveSettlements: (settlements) => writeJSON('settlements', settlements)
 };
