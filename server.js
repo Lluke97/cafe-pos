@@ -305,18 +305,27 @@ app.post('/api/admin/settlement', (req, res) => {
   const settings = db.getSettings();
   const since = settings.settlement.date;
   const recorded = recordedTotalsSince(settings.settlement.at);
+  // actualCash/actualTng are the full amount on hand right now ("최신 잔액"),
+  // so what we expect them to be is last time's balance plus what came in
+  // since — not just the new sales on their own.
+  const expectedCash = (settings.settlement.actualCash || 0) + recorded.cash;
+  const expectedTng = (settings.settlement.actualTng || 0) + recorded.tng;
   const nowIso = new Date().toISOString();
   const record = {
     id: uid(),
     createdAt: nowIso,
     date: todayStr(),
     since,
+    prevCash: settings.settlement.actualCash || 0,
+    prevTng: settings.settlement.actualTng || 0,
     recordedCash: recorded.cash,
     recordedTng: recorded.tng,
+    expectedCash,
+    expectedTng,
     actualCash,
     actualTng,
-    diffCash: actualCash - recorded.cash,
-    diffTng: actualTng - recorded.tng
+    diffCash: actualCash - expectedCash,
+    diffTng: actualTng - expectedTng
   };
   const settlements = db.getSettlements();
   settlements.push(record);
