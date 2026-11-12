@@ -14,6 +14,18 @@ if (ADMIN_PASS === 'changeme123') {
   console.warn('[cafe-pos] WARNING: using the default admin password. Set ADMIN_USER / ADMIN_PASS env vars before going live.');
 }
 
+// Optional second admin account (e.g. a temporary/emergency login). Set
+// ADMIN_USER2 / ADMIN_PASS2 as env vars; remove them to delete the account.
+const ADMIN_ACCOUNTS = [{ user: ADMIN_USER, pass: ADMIN_PASS }];
+if (process.env.ADMIN_USER2 && process.env.ADMIN_PASS2) {
+  ADMIN_ACCOUNTS.push({ user: process.env.ADMIN_USER2, pass: process.env.ADMIN_PASS2 });
+  console.warn('[cafe-pos] NOTE: a second admin account (ADMIN_USER2) is active. Remove ADMIN_USER2/ADMIN_PASS2 when you no longer need it.');
+}
+
+function safeEqual(a, b) {
+  return crypto.timingSafeEqual(Buffer.from(String(a).padEnd(128)), Buffer.from(String(b).padEnd(128)));
+}
+
 // ---- very small HTTP Basic Auth, no extra dependency ----
 // Brute-force protection: after 5 wrong attempts from one IP, that IP is
 // locked out from trying again for 15 minutes. Successful logins reset it.
@@ -40,9 +52,8 @@ function requireAdmin(req, res, next) {
     const sep = decoded.indexOf(':');
     const user = decoded.slice(0, sep);
     const pass = decoded.slice(sep + 1);
-    const okUser = crypto.timingSafeEqual(Buffer.from(user.padEnd(128)), Buffer.from(ADMIN_USER.padEnd(128)));
-    const okPass = crypto.timingSafeEqual(Buffer.from(pass.padEnd(128)), Buffer.from(ADMIN_PASS.padEnd(128)));
-    if (okUser && okPass) {
+    const matched = ADMIN_ACCOUNTS.some((acc) => safeEqual(user, acc.user) && safeEqual(pass, acc.pass));
+    if (matched) {
       failedAttempts.delete(ip);
       return next();
     }
