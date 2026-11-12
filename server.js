@@ -15,7 +15,24 @@ if (ADMIN_PASS === 'changeme123') {
 }
 
 // ---- very small HTTP Basic Auth, no extra dependency ----
+// Brute-force protection: after 5 wrong attempts from one IP, that IP is
+// locked out from trying again for 15 minutes. Successful logins reset it.
+const FAILED_ATTEMPT_LIMIT = 5;
+const LOCKOUT_MS = 15 * 60 * 1000;
+const failedAttempts = new Map(); // ip -> { count, lockedUntil }
+
+function clientIp(req) {
+  return (req.headers['x-forwarded-for'] || '').split(',')[0].trim() || req.socket.remoteAddress || 'unknown';
+}
+
 function requireAdmin(req, res, next) {
+  const ip = clientIp(req);
+  const record = failedAttempts.get(ip);
+  if (record && record.lockedUntil && record.lockedUntil > Date.now()) {
+    const waitMin = Math.ceil((record.lockedUntil - Date.now()) / 60000);
+    return res.status(429).send(`Too many failed attempts. Try again in about ${waitMin} minute(s).`);
+  }
+
   const header = req.headers.authorization || '';
   const [scheme, encoded] = header.split(' ');
   if (scheme === 'Basic' && encoded) {
@@ -23,10 +40,21 @@ function requireAdmin(req, res, next) {
     const sep = decoded.indexOf(':');
     const user = decoded.slice(0, sep);
     const pass = decoded.slice(sep + 1);
-    const okUser = crypto.timingSafeEqual(Buffer.from(user.padEnd(64)), Buffer.from(ADMIN_USER.padEnd(64)));
-    const okPass = crypto.timingSafeEqual(Buffer.from(pass.padEnd(64)), Buffer.from(ADMIN_PASS.padEnd(64)));
-    if (okUser && okPass) return next();
+    const okUser = crypto.timingSafeEqual(Buffer.from(user.padEnd(128)), Buffer.from(ADMIN_USER.padEnd(128)));
+    const okPass = crypto.timingSafeEqual(Buffer.from(pass.padEnd(128)), Buffer.from(ADMIN_PASS.padEnd(128)));
+    if (okUser && okPass) {
+      failedAttempts.delete(ip);
+      return next();
+    }
   }
+
+  const next_count = (record && record.count ? record.count : 0) + 1;
+  if (next_count >= FAILED_ATTEMPT_LIMIT) {
+    failedAttempts.set(ip, { count: next_count, lockedUntil: Date.now() + LOCKOUT_MS });
+  } else {
+    failedAttempts.set(ip, { count: next_count, lockedUntil: 0 });
+  }
+
   res.set('WWW-Authenticate', 'Basic realm="Cafe Admin"');
   return res.status(401).send('Authentication required.');
 }
@@ -166,23 +194,53 @@ app.delete('/api/admin/expenses/:id', (req, res) => {
   res.json({ ok: true });
 });
 
-// Simple daily rollup: revenue, cost, profit.
+// Daily rollup: revenue (split by payment method), cost, profit, and a
+// running balance that starts from the admin-set opening balance.
 app.get('/api/admin/summary', (req, res) => {
   const orders = db.getOrders();
   const expenses = db.getExpenses();
+  const settings = db.getSettings();
   const byDay = {};
 
   function day(d) {
-    if (!byDay[d]) byDay[d] = { date: d, revenue: 0, cost: 0 };
+    if (!byDay[d]) byDay[d] = { date: d, revenue: 0, cost: 0, cash: 0, tng: 0, other: 0 };
     return byDay[d];
   }
 
-  orders.forEach((o) => { day(o.createdAt.slice(0, 10)).revenue += o.total; });
+  orders.forEach((o) => {
+    const d = day(o.createdAt.slice(0, 10));
+    d.revenue += o.total;
+    if (o.pay === '현금') d.cash += o.total;
+    else if (o.pay === '터치앤고') d.tng += o.total;
+    else d.other += o.total;
+  });
   expenses.forEach((e) => { day(e.date).cost += e.amount; });
 
-  const days = Object.values(byDay).sort((a, b) => b.date.localeCompare(a.date));
-  days.forEach((d) => { d.profit = d.revenue - d.cost; });
-  res.json(days);
+  const daysAsc = Object.values(byDay).sort((a, b) => a.date.localeCompare(b.date));
+  let running = settings.startingBalance || 0;
+  daysAsc.forEach((d) => {
+    d.profit = d.revenue - d.cost;
+    running += d.profit;
+    d.balance = running;
+  });
+
+  res.json(daysAsc.slice().reverse());
+});
+
+// Opening cash balance that carries forward into the running balance above.
+app.get('/api/admin/settings', (req, res) => {
+  res.json(db.getSettings());
+});
+
+app.put('/api/admin/settings', (req, res) => {
+  const { startingBalance } = req.body || {};
+  if (typeof startingBalance !== 'number' || Number.isNaN(startingBalance)) {
+    return res.status(400).json({ error: 'startingBalance must be a number' });
+  }
+  const settings = db.getSettings();
+  settings.startingBalance = startingBalance;
+  db.saveSettings(settings);
+  res.json(settings);
 });
 
 // Admin page itself needs the same auth before the browser even gets the HTML.
