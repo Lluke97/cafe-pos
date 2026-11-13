@@ -73,9 +73,11 @@ header span { font-size: 12px; opacity: .85; }
   position: relative; display: flex; flex-direction: column; align-items: center; justify-content: center;
   gap: 6px; aspect-ratio: 1 / 1; border: 1px solid var(--border); border-radius: 14px;
   background: var(--surface); box-shadow: var(--shadow); cursor: pointer;
-  -webkit-tap-highlight-color: transparent; user-select: none; padding: 6px; transition: transform .08s ease;
+  -webkit-tap-highlight-color: transparent; user-select: none; -webkit-user-select: none;
+  -webkit-touch-callout: none; padding: 6px; transition: transform .08s ease;
   min-width: 0; min-height: 0;
 }
+.item-btn * { user-select: none; -webkit-user-select: none; -webkit-touch-callout: none; }
 .item-btn:active { transform: scale(0.95); }
 .item-btn.dragging { transform: scale(1.08); box-shadow: 0 10px 24px rgba(0,0,0,.3); z-index: 5; opacity: .92; }
 .grid.reordering { touch-action: none; }
