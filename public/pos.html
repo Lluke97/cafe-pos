@@ -145,7 +145,7 @@
       var totalH = rows * tileW + gap * (rows - 1);
       if (totalH <= H && tileW > bestTile) { bestTile = tileW; bestCols = cols; }
     }
-    var MAX_TILE_PX = 150; // keep tiles from ballooning when there's lots of spare room
+    var MAX_TILE_PX = 190; // keep tiles from ballooning when there's lots of spare room
     if (bestTile > MAX_TILE_PX) {
       // Not just a font-size cap — recompute columns so tiles are actually
       // this size, not just stretched squares with small text floating in them.
@@ -392,6 +392,7 @@
     renderClock();
     setInterval(renderClock, 30000);
     render();
+    if (window.cafeKeepAwake) window.cafeKeepAwake();
   }
 
   init();
