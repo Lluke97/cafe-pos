@@ -93,9 +93,28 @@ app.use(express.static(path.join(__dirname, 'public')));
 
 // ---------------- Public API (used by the till / entry pages, no login) ----------------
 
-// Menu is read-only here; editing happens only through the admin API.
+// Menu is read-only here, except for reordering — editing name/price/etc.
+// happens only through the admin API, but staff can drag tiles into a new
+// order right on the till, so that one's exposed without a login too.
 app.get('/api/menu', (req, res) => {
   res.json(db.getMenu());
+});
+
+function reorderMenu(order) {
+  const menu = db.getMenu();
+  const byId = new Map(menu.map((m) => [m.id, m]));
+  const reordered = order.map((id) => byId.get(id)).filter(Boolean);
+  menu.forEach((m) => { if (!order.includes(m.id)) reordered.push(m); });
+  db.saveMenu(reordered);
+  return reordered;
+}
+
+app.put('/api/menu/reorder', (req, res) => {
+  const { order } = req.body || {};
+  if (!Array.isArray(order) || order.length === 0) {
+    return res.status(400).json({ error: 'order must be a non-empty array of menu item ids' });
+  }
+  res.json(reorderMenu(order));
 });
 
 // Staff can see today's orders from the till screen itself (read-only, no login).
@@ -180,13 +199,7 @@ app.put('/api/admin/menu/reorder', (req, res) => {
   if (!Array.isArray(order) || order.length === 0) {
     return res.status(400).json({ error: 'order must be a non-empty array of menu item ids' });
   }
-  const menu = db.getMenu();
-  const byId = new Map(menu.map((m) => [m.id, m]));
-  const reordered = order.map((id) => byId.get(id)).filter(Boolean);
-  // Keep any item not mentioned in `order` at the end, instead of silently dropping it.
-  menu.forEach((m) => { if (!order.includes(m.id)) reordered.push(m); });
-  db.saveMenu(reordered);
-  res.json(reordered);
+  res.json(reorderMenu(order));
 });
 
 app.post('/api/admin/menu', (req, res) => {
