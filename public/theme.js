@@ -50,4 +50,23 @@
     ymd: function (d) { return fmtYMD.format(toDate(d)); },
     now: function () { return new Date(); }
   };
+
+  // Keeps the screen from auto-locking while a till/brew-board page is left
+  // open. Safari on iPadOS supports the Screen Wake Lock API from 16.4+; on
+  // older versions this just quietly does nothing (no error, no crash).
+  var wakeLock = null;
+  async function requestWakeLock() {
+    if (!('wakeLock' in navigator)) return;
+    try {
+      wakeLock = await navigator.wakeLock.request('screen');
+    } catch (e) {
+      // e.g. page not visible yet, or battery saver — safe to ignore, we retry on visibilitychange
+    }
+  }
+  window.cafeKeepAwake = function () {
+    requestWakeLock();
+    document.addEventListener('visibilitychange', function () {
+      if (document.visibilityState === 'visible') requestWakeLock();
+    });
+  };
 })();
