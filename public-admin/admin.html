@@ -163,7 +163,7 @@
     <button id="mAddBtn" class="btn btn-primary active" style="flex:0 0 auto; padding:10px 16px;">추가</button>
   </div>
   <table class="admin-table">
-    <thead><tr><th></th><th>이름</th><th>카테고리</th><th>가격</th><th></th></tr></thead>
+    <thead><tr><th>순서</th><th></th><th>이름</th><th>카테고리</th><th>가격</th><th></th></tr></thead>
     <tbody id="menuRows"></tbody>
   </table>
 </section>
@@ -613,8 +613,12 @@
 
   var menuCache = [];
 
-  function menuRowHtml(m) {
+  function menuRowHtml(m, idx, total) {
     return '<tr data-id="' + m.id + '">' +
+      '<td class="row-actions">' +
+        '<button class="btn-small" data-up="' + m.id + '"' + (idx === 0 ? ' disabled' : '') + '>▲</button>' +
+        '<button class="btn-small" data-down="' + m.id + '"' + (idx === total - 1 ? ' disabled' : '') + '>▼</button>' +
+      '</td>' +
       '<td>' + m.emoji + '</td><td>' + m.name + '</td><td>' + m.category + '</td><td>' + fmt(m.price) + '</td>' +
       '<td class="row-actions">' +
         '<button class="btn-small" data-edit="' + m.id + '">수정</button>' +
@@ -624,6 +628,7 @@
 
   function menuEditRowHtml(m) {
     return '<tr data-id="' + m.id + '" class="menu-edit-row">' +
+      '<td></td>' +
       '<td>' +
         '<select data-f="emoji" style="width:120px"></select>' +
         '<input data-f="emojiCustom" placeholder="직접 입력" style="width:100px; margin-top:4px; display:none;">' +
@@ -638,6 +643,26 @@
   }
 
   function bindMenuRowEvents() {
+    document.querySelectorAll('#menuRows button[data-up]').forEach(function (b) {
+      b.addEventListener('click', function () {
+        var id = b.getAttribute('data-up');
+        var i = menuCache.findIndex(function (m) { return m.id === id; });
+        if (i <= 0) return;
+        var tmp = menuCache[i - 1]; menuCache[i - 1] = menuCache[i]; menuCache[i] = tmp;
+        renderMenuTable();
+        saveMenuOrder();
+      });
+    });
+    document.querySelectorAll('#menuRows button[data-down]').forEach(function (b) {
+      b.addEventListener('click', function () {
+        var id = b.getAttribute('data-down');
+        var i = menuCache.findIndex(function (m) { return m.id === id; });
+        if (i === -1 || i >= menuCache.length - 1) return;
+        var tmp = menuCache[i + 1]; menuCache[i + 1] = menuCache[i]; menuCache[i] = tmp;
+        renderMenuTable();
+        saveMenuOrder();
+      });
+    });
     document.querySelectorAll('#menuRows button[data-edit]').forEach(function (b) {
       b.addEventListener('click', function () {
         var id = b.getAttribute('data-edit');
@@ -685,8 +710,16 @@
     });
   }
 
+  async function saveMenuOrder() {
+    await fetch('/api/admin/menu/reorder', {
+      method: 'PUT',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify({ order: menuCache.map(function (m) { return m.id; }) })
+    });
+  }
+
   function renderMenuTable() {
-    document.getElementById('menuRows').innerHTML = menuCache.map(menuRowHtml).join('') || '<tr><td colspan="5">메뉴 없음</td></tr>';
+    document.getElementById('menuRows').innerHTML = menuCache.map(function (m, i) { return menuRowHtml(m, i, menuCache.length); }).join('') || '<tr><td colspan="6">메뉴 없음</td></tr>';
     bindMenuRowEvents();
   }
 
