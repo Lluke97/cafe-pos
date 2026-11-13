@@ -176,6 +176,7 @@
     MENU.forEach(function (it) {
       var btn = document.createElement('div');
       btn.className = 'item-btn';
+      btn.setAttribute('data-id', it.id);
       btn.innerHTML =
         '<div class="item-emoji">' + it.emoji + '</div>' +
         '<div class="item-name"></div>' +
@@ -188,13 +189,88 @@
         badge.textContent = qty;
         btn.appendChild(badge);
       }
-      btn.addEventListener('click', function () {
-        cart[it.id] = (cart[it.id] || 0) + 1;
-        render();
-      });
+      bindItemBtnPress(btn, it);
       grid.appendChild(btn);
     });
   }
+
+  // A quick tap adds the item to the order, same as before. Pressing and
+  // holding for ~450ms instead switches into drag mode — move the finger
+  // over another tile to swap places — so the menu layout can be rearranged
+  // right here on the till without going into the admin page.
+  var dragState = null; // { id, movedEnough }
+  function bindItemBtnPress(btn, it) {
+    var longPressTimer = null;
+    var startX = 0, startY = 0;
+    var MOVE_CANCEL_PX = 10;
+
+    btn.addEventListener('pointerdown', function (e) {
+      if (dragState) return; // a drag from another tile is still finishing up
+      startX = e.clientX; startY = e.clientY;
+      longPressTimer = setTimeout(function () {
+        longPressTimer = null;
+        dragState = { id: it.id };
+        btn.classList.add('dragging');
+        document.getElementById('grid').classList.add('reordering');
+      }, 450);
+    });
+
+    btn.addEventListener('pointermove', function (e) {
+      if (longPressTimer && (Math.abs(e.clientX - startX) > MOVE_CANCEL_PX || Math.abs(e.clientY - startY) > MOVE_CANCEL_PX)) {
+        clearTimeout(longPressTimer);
+        longPressTimer = null;
+      }
+    });
+
+    btn.addEventListener('pointerup', function () {
+      if (longPressTimer) {
+        clearTimeout(longPressTimer);
+        longPressTimer = null;
+        if (!dragState) {
+          // A plain tap — add to the order.
+          cart[it.id] = (cart[it.id] || 0) + 1;
+          render();
+        }
+      }
+    });
+
+    btn.addEventListener('pointercancel', function () {
+      if (longPressTimer) { clearTimeout(longPressTimer); longPressTimer = null; }
+    });
+  }
+
+  document.addEventListener('pointermove', function (e) {
+    if (!dragState) return;
+    e.preventDefault();
+    var el = document.elementFromPoint(e.clientX, e.clientY);
+    var target = el && el.closest ? el.closest('.item-btn[data-id]') : null;
+    if (!target) return;
+    var overId = target.getAttribute('data-id');
+    if (overId === dragState.id) return;
+    var fromIdx = MENU.findIndex(function (m) { return m.id === dragState.id; });
+    var toIdx = MENU.findIndex(function (m) { return m.id === overId; });
+    if (fromIdx === -1 || toIdx === -1) return;
+    var moved = MENU.splice(fromIdx, 1)[0];
+    MENU.splice(toIdx, 0, moved);
+    renderGrid();
+    var el2 = document.querySelector('.item-btn[data-id="' + dragState.id + '"]');
+    if (el2) el2.classList.add('dragging');
+  });
+
+  document.addEventListener('pointerup', function () {
+    if (!dragState) return;
+    var id = dragState.id;
+    dragState = null;
+    var grid = document.getElementById('grid');
+    grid.classList.remove('reordering');
+    var el = document.querySelector('.item-btn[data-id="' + id + '"]');
+    if (el) el.classList.remove('dragging');
+    fetch('/api/menu/reorder', {
+      method: 'PUT',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify({ order: MENU.map(function (m) { return m.id; }) })
+    }).catch(function () {});
+  });
 
   function renderTicket() {
     var body = document.getElementById('ticketBody');
