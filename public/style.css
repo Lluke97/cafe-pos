@@ -51,7 +51,7 @@ header span { font-size: 12px; opacity: .85; }
 .right { width: 100%; background: var(--surface); border-top: 1px solid var(--border); }
 @media (min-width: 760px) {
   .right {
-    width: 440px; flex-shrink: 0; border-top: none; border-left: 1px solid var(--border);
+    width: 390px; flex-shrink: 0; border-top: none; border-left: 1px solid var(--border);
     position: sticky; top: 56px; height: calc(100vh - 56px); display: flex; flex-direction: column;
   }
 }
