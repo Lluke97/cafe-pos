@@ -172,6 +172,23 @@ app.use('/api/admin', requireAdmin);
 
 app.get('/api/admin/menu', (req, res) => res.json(db.getMenu()));
 
+// Lets the owner set the till's menu button order by hand (drag/reorder in
+// the admin UI, or just up/down). Body is the full list of item ids in the
+// new order; items are re-sorted to match, nothing is added or removed here.
+app.put('/api/admin/menu/reorder', (req, res) => {
+  const { order } = req.body || {};
+  if (!Array.isArray(order) || order.length === 0) {
+    return res.status(400).json({ error: 'order must be a non-empty array of menu item ids' });
+  }
+  const menu = db.getMenu();
+  const byId = new Map(menu.map((m) => [m.id, m]));
+  const reordered = order.map((id) => byId.get(id)).filter(Boolean);
+  // Keep any item not mentioned in `order` at the end, instead of silently dropping it.
+  menu.forEach((m) => { if (!order.includes(m.id)) reordered.push(m); });
+  db.saveMenu(reordered);
+  res.json(reordered);
+});
+
 app.post('/api/admin/menu', (req, res) => {
   const { name, emoji, price, category } = req.body || {};
   if (!name || typeof price !== 'number' || price <= 0) {
