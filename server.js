@@ -93,9 +93,7 @@ app.use(express.static(path.join(__dirname, 'public')));
 
 // ---------------- Public API (used by the till / entry pages, no login) ----------------
 
-// Menu is read-only here, except for reordering — editing name/price/etc.
-// happens only through the admin API, but staff can drag tiles into a new
-// order right on the till, so that one's exposed without a login too.
+// Menu is read-only here; reordering is an admin-only action (see below).
 app.get('/api/menu', (req, res) => {
   res.json(db.getMenu());
 });
@@ -108,14 +106,6 @@ function reorderMenu(order) {
   db.saveMenu(reordered);
   return reordered;
 }
-
-app.put('/api/menu/reorder', (req, res) => {
-  const { order } = req.body || {};
-  if (!Array.isArray(order) || order.length === 0) {
-    return res.status(400).json({ error: 'order must be a non-empty array of menu item ids' });
-  }
-  res.json(reorderMenu(order));
-});
 
 // Staff can see today's orders from the till screen itself (read-only, no login).
 app.get('/api/orders', (req, res) => {
