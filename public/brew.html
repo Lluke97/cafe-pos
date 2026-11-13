@@ -25,6 +25,7 @@
   }
   .order-card:active { transform: scale(0.98); }
   .order-card.done { opacity: .4; }
+  .order-card.holding { transform: scale(0.94); opacity: .75 !important; transition: transform .9s ease-out, opacity .9s ease-out; }
   .order-top { display: flex; justify-content: space-between; align-items: baseline; margin-bottom: 8px; }
   .order-time { font-size: 20px; font-weight: 700; font-variant-numeric: tabular-nums; }
   .order-elapsed { font-size: 12px; color: var(--text-muted); }
@@ -126,9 +127,37 @@
         ul.appendChild(li);
       });
       if (o.pay) card.querySelector('.order-pay').textContent = o.pay;
-      card.querySelector('.order-done-badge').textContent = o.status === 'done' ? '완료됨 (다시 탭하면 취소)' : '탭해서 완료 처리';
-      card.addEventListener('click', function () { toggleStatus(o); });
+      card.querySelector('.order-done-badge').textContent = o.status === 'done' ? '완료됨 (꾹 눌러서 취소)' : '탭해서 완료 처리';
+      bindCardPress(card, o);
     });
+  }
+
+  // 완료 처리(한 번 탭)는 바로 되지만, 완료를 다시 되돌리는 건 실수 방지를 위해
+  // 1초 가까이 꾹 눌러야 동작해요.
+  function bindCardPress(card, o) {
+    if (o.status !== 'done') {
+      card.addEventListener('click', function () { toggleStatus(o); });
+      return;
+    }
+    var HOLD_MS = 900;
+    var timer = null;
+    function start(e) {
+      e.preventDefault();
+      card.classList.add('holding');
+      timer = setTimeout(function () {
+        timer = null;
+        card.classList.remove('holding');
+        toggleStatus(o);
+      }, HOLD_MS);
+    }
+    function cancel() {
+      if (timer) { clearTimeout(timer); timer = null; }
+      card.classList.remove('holding');
+    }
+    card.addEventListener('pointerdown', start);
+    card.addEventListener('pointerup', cancel);
+    card.addEventListener('pointerleave', cancel);
+    card.addEventListener('pointercancel', cancel);
   }
 
   async function toggleStatus(o) {
