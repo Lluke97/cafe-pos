@@ -203,6 +203,7 @@
   setInterval(renderClock, 30000);
   load();
   setInterval(load, 3000);
+  if (window.cafeKeepAwake) window.cafeKeepAwake();
 </script>
 </body>
 </html>
