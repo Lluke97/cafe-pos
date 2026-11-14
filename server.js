@@ -5,36 +5,40 @@ const https = require('https');
 const db = require('./db');
 
 // Push a completed settlement (cash/TnG/bank) to the youth-budget site.
-// Fire-and-forget: a failure here must never block or fail the settlement
-// itself — it's just logged so it can be re-pushed by hand if needed.
+// This is NOT called automatically on save anymore — the owner presses a
+// dedicated "정산 전송" button, which hits the /send-to-finance route below.
+// Returns a promise so that route can report success/failure back to the UI.
 function notifyYouthBudget(record) {
-  const url = process.env.YOUTH_BUDGET_URL;
-  const secret = process.env.SETTLEMENT_WEBHOOK_SECRET;
-  if (!url || !secret) return; // integration not configured — settlement still saves fine
-  try {
-    const target = new URL('/api/webhook/cafe-settlement', url);
-    const payload = JSON.stringify({
-      date: record.date,
-      cash: record.actualCash,
-      tng: record.actualTng,
-      bank: typeof record.actualBank === 'number' ? record.actualBank : null,
-      memo: '카페 정산 자동 반영'
-    });
-    const req = https.request(target, {
-      method: 'POST',
-      headers: { 'Content-Type': 'application/json', 'Content-Length': Buffer.byteLength(payload), 'X-Webhook-Secret': secret }
-    }, (res) => {
-      if (res.statusCode < 200 || res.statusCode >= 300) {
-        console.error('[cafe-pos] youth-budget webhook returned', res.statusCode);
-      }
-      res.resume();
-    });
-    req.on('error', (e) => console.error('[cafe-pos] youth-budget webhook failed:', e.message));
-    req.write(payload);
-    req.end();
-  } catch (e) {
-    console.error('[cafe-pos] youth-budget webhook setup failed:', e.message);
-  }
+  return new Promise((resolve, reject) => {
+    const url = process.env.YOUTH_BUDGET_URL;
+    const secret = process.env.SETTLEMENT_WEBHOOK_SECRET;
+    if (!url || !secret) {
+      return reject(new Error('연동 설정이 안 되어 있어요 (YOUTH_BUDGET_URL / SETTLEMENT_WEBHOOK_SECRET)'));
+    }
+    try {
+      const target = new URL('/api/webhook/cafe-settlement', url);
+      const payload = JSON.stringify({
+        date: record.date,
+        cash: record.actualCash,
+        tng: record.actualTng,
+        bank: typeof record.actualBank === 'number' ? record.actualBank : null,
+        memo: '카페 정산 전송'
+      });
+      const req = https.request(target, {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json', 'Content-Length': Buffer.byteLength(payload), 'X-Webhook-Secret': secret }
+      }, (res) => {
+        res.resume();
+        if (res.statusCode >= 200 && res.statusCode < 300) resolve();
+        else reject(new Error('youth-budget webhook returned ' + res.statusCode));
+      });
+      req.on('error', (e) => reject(e));
+      req.write(payload);
+      req.end();
+    } catch (e) {
+      reject(e);
+    }
+  });
 }
 
 const app = express();
@@ -396,14 +400,31 @@ app.post('/api/admin/settlement', (req, res) => {
   settings.settlement = { at: nowIso, date: record.date, actualCash, actualTng, actualBank: bankValue };
   db.saveSettings(settings);
 
-  notifyYouthBudget(record);
-
   res.status(201).json(record);
 });
 
 app.get('/api/admin/settlements', (req, res) => {
   const settlements = db.getSettlements().slice().sort((a, b) => b.createdAt.localeCompare(a.createdAt));
   res.json(settlements);
+});
+
+// Explicit "정산 전송" action — only this pushes a settlement to the
+// youth-budget finance site. Saving a settlement above does NOT do this
+// automatically anymore, so the owner reviews the numbers first and sends
+// on purpose. Safe to call again (e.g. after a webhook hiccup).
+app.post('/api/admin/settlements/:id/send-to-finance', async (req, res) => {
+  const settlements = db.getSettlements();
+  const rec = settlements.find((s) => s.id === req.params.id);
+  if (!rec) return res.status(404).json({ error: 'not found' });
+  try {
+    await notifyYouthBudget(rec);
+  } catch (e) {
+    return res.status(502).json({ error: '파이낸스 전송 실패: ' + e.message });
+  }
+  rec.sentToFinance = true;
+  rec.sentAt = new Date().toISOString();
+  db.saveSettlements(settlements);
+  res.json(rec);
 });
 
 // Fix a mistyped settlement. The recorded/expected figures from when it was

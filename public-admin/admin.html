@@ -103,6 +103,8 @@
     <div style="font-size:11px; color:var(--text-muted); margin-top:4px;">은행 잔액은 정산 비교에 쓰이지 않고, 청년부 예산 사이트로 그대로 전달만 돼요.</div>
     <button id="settleBtn" class="btn btn-primary active" style="width:100%; margin-top:10px;">정산하기</button>
     <div id="settleResult" style="display:none; margin-top:12px;"></div>
+    <button id="sendFinanceBtn" class="btn btn-secondary" style="width:100%; margin-top:8px; display:none;">📤 정산 전송 (파이낸스로 보내기)</button>
+    <div id="sendFinanceStatus" style="display:none; font-size:12px; margin-top:6px;"></div>
 
     <div id="reportBox" style="display:none; margin-top:14px;">
       <div style="font-size:12px; color:var(--text-muted); margin-bottom:6px;">📋 복사해서 보낼 주간 리포트</div>
@@ -117,7 +119,7 @@
         <span id="regenReportBtn" class="clear" style="font-size:12px;">최근 리포트 다시 보기</span>
       </div>
       <table class="admin-table">
-        <thead><tr><th>날짜</th><th>현금 차이</th><th>터치앤고 차이</th><th></th></tr></thead>
+        <thead><tr><th>날짜</th><th>현금 차이</th><th>터치앤고 차이</th><th>파이낸스</th><th></th></tr></thead>
         <tbody id="settlementRows"></tbody>
       </table>
     </div>
@@ -346,6 +348,31 @@
     loadSettlementStatus();
     loadSettlementHistory();
     buildReport(record);
+
+    var sendBtn = document.getElementById('sendFinanceBtn');
+    var sendStatus = document.getElementById('sendFinanceStatus');
+    sendStatus.style.display = 'none';
+    sendBtn.style.display = 'block';
+    sendBtn.disabled = false;
+    sendBtn.textContent = '📤 정산 전송 (파이낸스로 보내기)';
+    sendBtn.onclick = async function () {
+      sendBtn.disabled = true;
+      sendBtn.textContent = '전송 중...';
+      var r = await fetch('/api/admin/settlements/' + record.id + '/send-to-finance', { method: 'POST' });
+      var data = await r.json();
+      sendStatus.style.display = 'block';
+      if (r.ok) {
+        sendBtn.textContent = '✓ 전송 완료';
+        sendStatus.style.color = 'var(--ok)';
+        sendStatus.textContent = '파이낸스 사이트에 반영됐어요.';
+        loadSettlementHistory();
+      } else {
+        sendBtn.disabled = false;
+        sendBtn.textContent = '📤 정산 전송 (파이낸스로 보내기)';
+        sendStatus.style.color = 'var(--err, #e5484d)';
+        sendStatus.textContent = data.error || '전송에 실패했어요. 다시 시도해주세요.';
+      }
+    };
   });
 
   var settlementCache = [];
@@ -355,6 +382,7 @@
       '<td>' + r.date + '</td>' +
       '<td class="' + (Math.abs(r.diffCash) < 0.01 ? 'diff-ok' : 'diff-off') + '">' + fmt(r.diffCash) + '</td>' +
       '<td class="' + (Math.abs(r.diffTng) < 0.01 ? 'diff-ok' : 'diff-off') + '">' + fmt(r.diffTng) + '</td>' +
+      '<td>' + (r.sentToFinance ? '<span style="color:var(--ok);font-size:12px;">✓ 전송됨</span>' : '<button class="btn-small" data-send-settle="' + r.id + '">전송</button>') + '</td>' +
       '<td class="row-actions">' +
         '<button class="btn-small" data-edit-settle="' + r.id + '">수정</button>' +
         '<button class="btn-small btn-danger" data-del-settle="' + r.id + '">삭제</button>' +
@@ -366,6 +394,7 @@
       '<td>' + r.date + '</td>' +
       '<td><input type="number" step="0.01" value="' + r.actualCash + '" data-f="actualCash" style="width:90px"></td>' +
       '<td><input type="number" step="0.01" value="' + r.actualTng + '" data-f="actualTng" style="width:90px"></td>' +
+      '<td></td>' +
       '<td class="row-actions">' +
         '<button class="btn-small inline-save" data-save-settle="' + r.id + '">저장</button>' +
         '<button class="btn-small" data-cancel-settle="' + r.id + '">취소</button>' +
@@ -406,6 +435,22 @@
         await fetch('/api/admin/settlements/' + b.getAttribute('data-del-settle'), { method: 'DELETE' });
         loadSettlementHistory();
         loadSettlementStatus();
+      });
+    });
+    document.querySelectorAll('#settlementRows button[data-send-settle]').forEach(function (b) {
+      b.addEventListener('click', async function () {
+        var id = b.getAttribute('data-send-settle');
+        b.disabled = true;
+        b.textContent = '전송 중...';
+        var r = await fetch('/api/admin/settlements/' + id + '/send-to-finance', { method: 'POST' });
+        if (r.ok) {
+          loadSettlementHistory();
+        } else {
+          var data = await r.json();
+          alert(data.error || '전송에 실패했어요.');
+          b.disabled = false;
+          b.textContent = '전송';
+        }
       });
     });
   }
