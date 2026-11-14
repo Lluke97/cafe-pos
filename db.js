@@ -42,10 +42,13 @@ const DEFAULT_MENU = [
 ];
 
 // `settlement` is the last time the owner actually counted the cash drawer
-// and checked the Touch 'n Go balance: { date, actualCash, actualTng }.
+// and checked the Touch 'n Go balance: { date, actualCash, actualTng, actualBank }.
 // Everything since that date is "unsettled" — compared against what the
 // system recorded — until the next settlement resets the baseline.
-const DEFAULT_SETTINGS = { settlement: { at: null, date: null, actualCash: 0, actualTng: 0 } };
+// actualBank (은행 잔액) isn't reconciled against anything recorded here —
+// cafe-pos doesn't track bank transfers — it's just carried along so the
+// youth-budget site gets the full cash/TnG/bank picture on each settlement.
+const DEFAULT_SETTINGS = { settlement: { at: null, date: null, actualCash: 0, actualTng: 0, actualBank: 0 } };
 
 module.exports = {
   getMenu: () => readJSON('menu', DEFAULT_MENU),

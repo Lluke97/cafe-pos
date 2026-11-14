@@ -81,6 +81,10 @@
         <div class="settlement-label">📱 이전 터치앤고 잔액</div>
         <div class="settlement-value" id="prevTng">RM0.00</div>
       </div>
+      <div class="settlement-col">
+        <div class="settlement-label">🏦 이전 은행 잔액</div>
+        <div class="settlement-value" id="prevBank">RM0.00</div>
+      </div>
     </div>
     <div class="settlement-row" style="margin-top:12px;">
       <div class="field" style="flex:1;">
@@ -91,7 +95,12 @@
         <label>📱 최신 터치앤고 잔액 (앱/명세 확인)</label>
         <input type="number" id="actualTng" step="0.01" placeholder="예: 420.00">
       </div>
+      <div class="field" style="flex:1;">
+        <label>🏦 최신 은행 잔액 (직접 확인)</label>
+        <input type="number" id="actualBank" step="0.01" placeholder="예: 15000.00">
+      </div>
     </div>
+    <div style="font-size:11px; color:var(--text-muted); margin-top:4px;">은행 잔액은 정산 비교에 쓰이지 않고, 청년부 예산 사이트로 그대로 전달만 돼요.</div>
     <button id="settleBtn" class="btn btn-primary active" style="width:100%; margin-top:10px;">정산하기</button>
     <div id="settleResult" style="display:none; margin-top:12px;"></div>
 
@@ -211,14 +220,17 @@
     // "이전 잔액" = what was actually counted at the last settlement.
     document.getElementById('prevCash').textContent = fmt(s.lastActualCash);
     document.getElementById('prevTng').textContent = fmt(s.lastActualTng);
+    document.getElementById('prevBank').textContent = fmt(s.lastActualBank || 0);
     document.getElementById('settlementSinceNote').textContent = s.since
       ? ('마지막 정산: ' + s.since + ' — 그 이후 들어온 주문 기준으로 비교해요')
       : '아직 정산한 적 없음 — 전체 기간 기준이에요. 최신 금액을 세어서 입력하고 정산하기를 눌러주세요.';
     // Prefill the "최신 잔액" inputs with the system's expected amount
     // (이전 잔액 + 그 이후 집계) so the owner only has to correct it if the
-    // real count differs.
+    // real count differs. Bank has no "recorded" figure (cafe-pos doesn't
+    // track bank transfers) so it's just prefilled with last time's value.
     document.getElementById('actualCash').value = (s.lastActualCash + s.recordedCash).toFixed(2);
     document.getElementById('actualTng').value = (s.lastActualTng + s.recordedTng).toFixed(2);
+    document.getElementById('actualBank').value = (s.lastActualBank || 0).toFixed(2);
   }
 
   function diffHtml(label, diff) {
@@ -284,6 +296,7 @@
     lines.push('[정산 확인 — 실사 결과]');
     lines.push('실제 현금: ' + fmt(record.actualCash) + (Math.abs(record.diffCash) < 0.01 ? ' (일치 ✓)' : (' (차이 ' + fmt(record.diffCash) + ')')));
     lines.push('실제 터치앤고: ' + fmt(record.actualTng) + (Math.abs(record.diffTng) < 0.01 ? ' (일치 ✓)' : (' (차이 ' + fmt(record.diffTng) + ')')));
+    if (typeof record.actualBank === 'number') lines.push('은행 잔액: ' + fmt(record.actualBank));
 
     document.getElementById('reportText').value = lines.join('\n');
     document.getElementById('reportBox').style.display = 'block';
@@ -312,11 +325,16 @@
   document.getElementById('settleBtn').addEventListener('click', async function () {
     var actualCash = parseFloat(document.getElementById('actualCash').value);
     var actualTng = parseFloat(document.getElementById('actualTng').value);
+    var actualBankInput = document.getElementById('actualBank').value;
+    var actualBank = actualBankInput === '' ? undefined : parseFloat(actualBankInput);
     if (Number.isNaN(actualCash) || Number.isNaN(actualTng)) return alert('실제 현금과 터치앤고 금액을 입력해주세요');
+    if (actualBank !== undefined && Number.isNaN(actualBank)) return alert('은행 잔액을 숫자로 입력해주세요');
+    var body = { actualCash: actualCash, actualTng: actualTng };
+    if (actualBank !== undefined) body.actualBank = actualBank;
     var res = await fetch('/api/admin/settlement', {
       method: 'POST',
       headers: { 'Content-Type': 'application/json' },
-      body: JSON.stringify({ actualCash: actualCash, actualTng: actualTng })
+      body: JSON.stringify(body)
     });
     var record = await res.json();
     var box = document.getElementById('settleResult');

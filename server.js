@@ -1,7 +1,41 @@
 const express = require('express');
 const path = require('path');
 const crypto = require('crypto');
+const https = require('https');
 const db = require('./db');
+
+// Push a completed settlement (cash/TnG/bank) to the youth-budget site.
+// Fire-and-forget: a failure here must never block or fail the settlement
+// itself — it's just logged so it can be re-pushed by hand if needed.
+function notifyYouthBudget(record) {
+  const url = process.env.YOUTH_BUDGET_URL;
+  const secret = process.env.SETTLEMENT_WEBHOOK_SECRET;
+  if (!url || !secret) return; // integration not configured — settlement still saves fine
+  try {
+    const target = new URL('/api/webhook/cafe-settlement', url);
+    const payload = JSON.stringify({
+      date: record.date,
+      cash: record.actualCash,
+      tng: record.actualTng,
+      bank: typeof record.actualBank === 'number' ? record.actualBank : null,
+      memo: '카페 정산 자동 반영'
+    });
+    const req = https.request(target, {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json', 'Content-Length': Buffer.byteLength(payload), 'X-Webhook-Secret': secret }
+    }, (res) => {
+      if (res.statusCode < 200 || res.statusCode >= 300) {
+        console.error('[cafe-pos] youth-budget webhook returned', res.statusCode);
+      }
+      res.resume();
+    });
+    req.on('error', (e) => console.error('[cafe-pos] youth-budget webhook failed:', e.message));
+    req.write(payload);
+    req.end();
+  } catch (e) {
+    console.error('[cafe-pos] youth-budget webhook setup failed:', e.message);
+  }
+}
 
 const app = express();
 app.use(express.json());
@@ -309,6 +343,7 @@ app.get('/api/admin/settlement-status', (req, res) => {
     since: settings.settlement.date,
     lastActualCash: settings.settlement.actualCash,
     lastActualTng: settings.settlement.actualTng,
+    lastActualBank: settings.settlement.actualBank || 0,
     recordedCash: recorded.cash,
     recordedTng: recorded.tng
   });
@@ -317,10 +352,15 @@ app.get('/api/admin/settlement-status', (req, res) => {
 // The owner counts the real drawer + checks the Touch 'n Go balance and
 // submits both here. We compare against what the system recorded since the
 // last settlement, log the result, and this becomes the new baseline.
+// actualBank (은행 잔액) is optional and not reconciled against anything —
+// it's just carried through to the youth-budget webhook below.
 app.post('/api/admin/settlement', (req, res) => {
-  const { actualCash, actualTng } = req.body || {};
+  const { actualCash, actualTng, actualBank } = req.body || {};
   if (typeof actualCash !== 'number' || typeof actualTng !== 'number' || Number.isNaN(actualCash) || Number.isNaN(actualTng)) {
     return res.status(400).json({ error: 'actualCash and actualTng must both be numbers' });
+  }
+  if (actualBank !== undefined && (typeof actualBank !== 'number' || Number.isNaN(actualBank))) {
+    return res.status(400).json({ error: 'actualBank must be a number if provided' });
   }
   const settings = db.getSettings();
   const since = settings.settlement.date;
@@ -331,6 +371,7 @@ app.post('/api/admin/settlement', (req, res) => {
   const expectedCash = (settings.settlement.actualCash || 0) + recorded.cash;
   const expectedTng = (settings.settlement.actualTng || 0) + recorded.tng;
   const nowIso = new Date().toISOString();
+  const bankValue = typeof actualBank === 'number' ? actualBank : (settings.settlement.actualBank || 0);
   const record = {
     id: uid(),
     createdAt: nowIso,
@@ -344,6 +385,7 @@ app.post('/api/admin/settlement', (req, res) => {
     expectedTng,
     actualCash,
     actualTng,
+    actualBank: bankValue,
     diffCash: actualCash - expectedCash,
     diffTng: actualTng - expectedTng
   };
@@ -351,8 +393,10 @@ app.post('/api/admin/settlement', (req, res) => {
   settlements.push(record);
   db.saveSettlements(settlements);
 
-  settings.settlement = { at: nowIso, date: record.date, actualCash, actualTng };
+  settings.settlement = { at: nowIso, date: record.date, actualCash, actualTng, actualBank: bankValue };
   db.saveSettings(settings);
+
+  notifyYouthBudget(record);
 
   res.status(201).json(record);
 });
@@ -367,9 +411,12 @@ app.get('/api/admin/settlements', (req, res) => {
 // counted amounts and the diff change. If this is the current baseline
 // settlement, the live baseline is updated too so future settlements stay correct.
 app.put('/api/admin/settlements/:id', (req, res) => {
-  const { actualCash, actualTng } = req.body || {};
+  const { actualCash, actualTng, actualBank } = req.body || {};
   if (typeof actualCash !== 'number' || typeof actualTng !== 'number' || Number.isNaN(actualCash) || Number.isNaN(actualTng)) {
     return res.status(400).json({ error: 'actualCash and actualTng must both be numbers' });
+  }
+  if (actualBank !== undefined && (typeof actualBank !== 'number' || Number.isNaN(actualBank))) {
+    return res.status(400).json({ error: 'actualBank must be a number if provided' });
   }
   const settlements = db.getSettlements();
   const rec = settlements.find((s) => s.id === req.params.id);
@@ -379,6 +426,7 @@ app.put('/api/admin/settlements/:id', (req, res) => {
   const expectedTng = rec.expectedTng != null ? rec.expectedTng : (rec.prevTng || 0) + rec.recordedTng;
   rec.actualCash = actualCash;
   rec.actualTng = actualTng;
+  if (typeof actualBank === 'number') rec.actualBank = actualBank;
   rec.expectedCash = expectedCash;
   rec.expectedTng = expectedTng;
   rec.diffCash = actualCash - expectedCash;
@@ -389,8 +437,10 @@ app.put('/api/admin/settlements/:id', (req, res) => {
   if (settings.settlement.at === rec.createdAt) {
     settings.settlement.actualCash = actualCash;
     settings.settlement.actualTng = actualTng;
+    if (typeof actualBank === 'number') settings.settlement.actualBank = actualBank;
     db.saveSettings(settings);
   }
+  notifyYouthBudget(rec);
   res.json(rec);
 });
 
