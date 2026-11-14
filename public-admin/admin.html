@@ -156,7 +156,7 @@
     <button id="expensesCsvBtn" class="btn btn-secondary" style="flex:0 0 auto; padding:10px 16px;">⬇ 엑셀(CSV) 다운로드</button>
   </div>
   <table class="admin-table">
-    <thead><tr><th>날짜</th><th>카테고리</th><th>금액</th><th>메모</th><th>작성자</th><th></th></tr></thead>
+    <thead><tr><th>날짜</th><th>카테고리</th><th>결제수단</th><th>금액</th><th>메모</th><th>작성자</th><th></th></tr></thead>
     <tbody id="expensesRows"></tbody>
   </table>
 </section>
@@ -580,9 +580,9 @@
   });
 
   document.getElementById('expensesCsvBtn').addEventListener('click', function () {
-    var rows = [['날짜', '카테고리', '금액(RM)', '메모', '작성자']];
+    var rows = [['날짜', '카테고리', '결제수단', '금액(RM)', '메모', '작성자']];
     lastExpenses.forEach(function (e) {
-      rows.push([e.date, e.category, e.amount, e.memo || '', e.author || '']);
+      rows.push([e.date, e.category, e.payment || '', e.amount, e.memo || '', e.author || '']);
     });
     downloadCsv('구매지출내역_' + window.cafeTime.ymd(new Date()) + '.csv', rows);
   });
@@ -616,9 +616,9 @@
     var expenses = await api('/api/admin/expenses' + qs);
     lastExpenses = expenses;
     document.getElementById('expensesRows').innerHTML = expenses.map(function (e) {
-      return '<tr><td>' + e.date + '</td><td>' + e.category + '</td><td>' + fmt(e.amount) + '</td><td>' + (e.memo || '-') + '</td><td>' + (e.author || '-') + '</td>' +
+      return '<tr><td>' + e.date + '</td><td>' + e.category + '</td><td>' + (e.payment || '-') + '</td><td>' + fmt(e.amount) + '</td><td>' + (e.memo || '-') + '</td><td>' + (e.author || '-') + '</td>' +
         '<td><button class="btn-small btn-danger" data-id="' + e.id + '">삭제</button></td></tr>';
-    }).join('') || '<tr><td colspan="6">내역 없음</td></tr>';
+    }).join('') || '<tr><td colspan="7">내역 없음</td></tr>';
     document.querySelectorAll('#expensesRows button').forEach(function (b) {
       b.addEventListener('click', async function () {
         if (!confirm('이 내역을 삭제할까요?')) return;

@@ -194,10 +194,20 @@ app.post('/api/orders/:id/status', (req, res) => {
 });
 
 // Staff logs a purchase or an expense from the entry screen.
+// How the expense was actually paid for. Youth-budget (the finance app
+// everything ends up in) maps this the same way it maps a purchase's own
+// payment method, so a cafe expense can be placed in the cash/TnG/bank
+// breakdown instead of being left out as unattributed.
+const EXPENSE_PAYMENT_METHODS = ['현금', '카드', '터치앤고'];
+
+app.get('/api/expense-payment-methods', (req, res) => {
+  res.json(EXPENSE_PAYMENT_METHODS);
+});
+
 app.post('/api/expenses', (req, res) => {
-  const { date, category, amount, memo, author } = req.body || {};
-  if (!category || typeof amount !== 'number' || amount <= 0) {
-    return res.status(400).json({ error: 'category and a positive amount are required' });
+  const { date, category, amount, memo, author, payment } = req.body || {};
+  if (!category || typeof amount !== 'number' || amount <= 0 || !EXPENSE_PAYMENT_METHODS.includes(payment)) {
+    return res.status(400).json({ error: `category, a positive amount, and payment (${EXPENSE_PAYMENT_METHODS.join('|')}) are required` });
   }
   const entry = {
     id: uid(),
@@ -205,6 +215,7 @@ app.post('/api/expenses', (req, res) => {
     date: date || todayStr(),
     category, // '원재료' | '운영비' | '기타'
     amount,
+    payment,
     memo: memo || '',
     author: author || ''
   };
