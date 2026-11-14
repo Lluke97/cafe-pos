@@ -75,19 +75,21 @@
     <h2 style="margin:0 0 10px; font-size:15px; font-weight:700;">💰 정산 (현금 · 터치앤고 실사)</h2>
     <div id="settlementSinceNote" style="font-size:12px; color:var(--text-muted); margin-bottom:10px;"></div>
     <div class="settlement-row">
-      <div class="settlement-col">
-        <div class="settlement-label">💵 이전 현금 잔액</div>
-        <div class="settlement-value" id="prevCash">RM0.00</div>
+      <div class="field" style="flex:1;">
+        <label>💵 이전 현금 잔액 (직접 수정 가능)</label>
+        <input type="number" id="prevCash" step="0.01" placeholder="예: 300.00">
       </div>
-      <div class="settlement-col">
-        <div class="settlement-label">📱 이전 터치앤고 잔액</div>
-        <div class="settlement-value" id="prevTng">RM0.00</div>
+      <div class="field" style="flex:1;">
+        <label>📱 이전 터치앤고 잔액 (직접 수정 가능)</label>
+        <input type="number" id="prevTng" step="0.01" placeholder="예: 400.00">
       </div>
-      <div class="settlement-col">
-        <div class="settlement-label">🏦 이전 은행 잔액</div>
-        <div class="settlement-value" id="prevBank">RM0.00</div>
+      <div class="field" style="flex:1;">
+        <label>🏦 이전 은행 잔액 (직접 수정 가능)</label>
+        <input type="number" id="prevBank" step="0.01" placeholder="예: 15000.00">
       </div>
     </div>
+    <button id="savePrevBtn" class="btn btn-secondary" style="width:100%; margin-top:8px;">이전 잔액 저장</button>
+    <span id="savePrevDone" style="display:none; font-size:12px; color:var(--ok); margin-left:4px;">저장됐어요 ✓</span>
     <div class="settlement-row" style="margin-top:12px;">
       <div class="field" style="flex:1;">
         <label>💵 최신 현금 잔액 (세어본 금액)</label>
@@ -239,29 +241,35 @@
   var chartInstance = null;
 
   // ---------- 정산 (cash / Touch 'n Go settlement) ----------
-  var lastActualCash = 0, lastActualTng = 0; // this week's starting balance (이전 잔액)
+  // "이전 잔액" used to be a read-only display of the last settlement's
+  // actual count, which left no way to set it the very first time (always
+  // RM0.00) or to correct it — and without a real 이전 잔액, "증가액" is
+  // meaningless. It's now an editable input: typing in it updates the live
+  // 증가액 immediately, and "이전 잔액 저장" persists it as the new baseline
+  // (without creating a 정산 record or touching the recorded-sales window).
 
-  // Live "이번 주 증가액" = what the owner just typed in minus last week's
-  // starting balance — how much actually went up this week, independent of
-  // whether it matches what the system recorded (that's the 차이 check below).
+  // Live "이번 주 증가액" = 최신 잔액 입력값 - 이전 잔액 입력값 — how much
+  // actually went up, independent of whether it matches what the system
+  // recorded (that's the 차이 check below, shown after 정산하기).
   function updateIncreaseDisplay() {
+    var prevCash = parseFloat(document.getElementById('prevCash').value);
+    var prevTng = parseFloat(document.getElementById('prevTng').value);
     var cash = parseFloat(document.getElementById('actualCash').value);
     var tng = parseFloat(document.getElementById('actualTng').value);
-    document.getElementById('increaseCash').textContent = Number.isNaN(cash) ? '-' : fmt(cash - lastActualCash);
-    document.getElementById('increaseTng').textContent = Number.isNaN(tng) ? '-' : fmt(tng - lastActualTng);
+    document.getElementById('increaseCash').textContent = (Number.isNaN(cash) || Number.isNaN(prevCash)) ? '-' : fmt(cash - prevCash);
+    document.getElementById('increaseTng').textContent = (Number.isNaN(tng) || Number.isNaN(prevTng)) ? '-' : fmt(tng - prevTng);
   }
 
   async function loadSettlementStatus() {
     var s = await api('/api/admin/settlement-status');
-    // "이전 잔액" = what was actually counted at the last settlement.
-    lastActualCash = s.lastActualCash || 0;
-    lastActualTng = s.lastActualTng || 0;
-    document.getElementById('prevCash').textContent = fmt(lastActualCash);
-    document.getElementById('prevTng').textContent = fmt(lastActualTng);
-    document.getElementById('prevBank').textContent = fmt(s.lastActualBank || 0);
+    // "이전 잔액" = what was actually counted at the last settlement (or
+    // whatever was last saved with "이전 잔액 저장").
+    document.getElementById('prevCash').value = (s.lastActualCash || 0).toFixed(2);
+    document.getElementById('prevTng').value = (s.lastActualTng || 0).toFixed(2);
+    document.getElementById('prevBank').value = (s.lastActualBank || 0).toFixed(2);
     document.getElementById('settlementSinceNote').textContent = s.since
       ? ('마지막 정산: ' + s.since + ' — 그 이후 들어온 주문 기준으로 비교해요')
-      : '아직 정산한 적 없음 — 전체 기간 기준이에요. 최신 금액을 세어서 입력하고 정산하기를 눌러주세요.';
+      : '아직 정산한 적 없음 — 이전 잔액을 직접 입력하고 저장한 뒤, 최신 금액을 세어서 정산하기를 눌러주세요.';
     // Prefill the "최신 잔액" inputs with the system's expected amount
     // (이전 잔액 + 그 이후 집계) so the owner only has to correct it if the
     // real count differs. Bank has no "recorded" figure (cafe-pos doesn't
@@ -272,8 +280,30 @@
     updateIncreaseDisplay();
   }
 
+  document.getElementById('prevCash').addEventListener('input', updateIncreaseDisplay);
+  document.getElementById('prevTng').addEventListener('input', updateIncreaseDisplay);
   document.getElementById('actualCash').addEventListener('input', updateIncreaseDisplay);
   document.getElementById('actualTng').addEventListener('input', updateIncreaseDisplay);
+
+  document.getElementById('savePrevBtn').addEventListener('click', async function () {
+    var prevCash = parseFloat(document.getElementById('prevCash').value);
+    var prevTng = parseFloat(document.getElementById('prevTng').value);
+    var prevBankInput = document.getElementById('prevBank').value;
+    var prevBank = prevBankInput === '' ? undefined : parseFloat(prevBankInput);
+    if (Number.isNaN(prevCash) || Number.isNaN(prevTng)) return alert('이전 현금과 터치앤고 잔액을 입력해주세요');
+    if (prevBank !== undefined && Number.isNaN(prevBank)) return alert('이전 은행 잔액을 숫자로 입력해주세요');
+    var body = { actualCash: prevCash, actualTng: prevTng };
+    if (prevBank !== undefined) body.actualBank = prevBank;
+    await fetch('/api/admin/settlement-baseline', {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify(body)
+    });
+    var done = document.getElementById('savePrevDone');
+    done.style.display = 'inline';
+    setTimeout(function () { done.style.display = 'none'; }, 2000);
+    loadSettlementStatus();
+  });
 
   function diffHtml(label, diff) {
     var cls = Math.abs(diff) < 0.01 ? 'diff-ok' : 'diff-off';

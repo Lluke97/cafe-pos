@@ -364,6 +364,32 @@ app.get('/api/admin/settlement-status', (req, res) => {
   });
 });
 
+// Directly correct the "이전 잔액" baseline (e.g. the very first time, when
+// nothing has ever been settled, or to fix a mistyped baseline) WITHOUT
+// creating a settlement record or touching the recorded-sales window. If
+// this is the very first baseline ever set (at is still null), we also set
+// `at`/`date` to now so recordedTotalsSince starts counting from this point;
+// otherwise the existing since-timestamp is left alone.
+app.post('/api/admin/settlement-baseline', (req, res) => {
+  const { actualCash, actualTng, actualBank } = req.body || {};
+  if (typeof actualCash !== 'number' || typeof actualTng !== 'number' || Number.isNaN(actualCash) || Number.isNaN(actualTng)) {
+    return res.status(400).json({ error: 'actualCash and actualTng must both be numbers' });
+  }
+  if (actualBank !== undefined && (typeof actualBank !== 'number' || Number.isNaN(actualBank))) {
+    return res.status(400).json({ error: 'actualBank must be a number if provided' });
+  }
+  const settings = db.getSettings();
+  const bankValue = typeof actualBank === 'number' ? actualBank : (settings.settlement.actualBank || 0);
+  const isFirstEver = !settings.settlement.at;
+  settings.settlement = {
+    at: isFirstEver ? new Date().toISOString() : settings.settlement.at,
+    date: isFirstEver ? todayStr() : settings.settlement.date,
+    actualCash, actualTng, actualBank: bankValue
+  };
+  db.saveSettings(settings);
+  res.json(settings.settlement);
+});
+
 // The owner counts the real drawer + checks the Touch 'n Go balance and
 // submits both here. We compare against what the system recorded since the
 // last settlement, log the result, and this becomes the new baseline.
