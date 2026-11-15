@@ -76,7 +76,7 @@
     <h2 style="margin:0 0 10px; font-size:15px; font-weight:700;">💰 정산 (현금 · 터치앤고 실사)</h2>
     <div id="settlementSinceNote" style="font-size:12px; color:var(--text-muted); margin-bottom:10px;"></div>
     <div class="field" style="max-width:220px; margin-bottom:10px;">
-      <label>📅 정산 기준일 (예: 일요일 영업분을 월요일에 정산)</label>
+      <label>📅 정산 매출일 (예: 일요일 영업분을 월요일에 정산할 때는 일요일로)</label>
       <input type="date" id="settlementAsOf">
     </div>
     <div class="settlement-row">
@@ -94,7 +94,7 @@
       </div>
     </div>
     <div class="field" style="max-width:220px; margin-top:8px;">
-      <label>📅 이 이전 잔액의 기준일 (이후 매출·지출을 여기부터 매칭)</label>
+      <label>📅 이 이전 잔액의 매출일 (이 날짜 다음부터 매출·지출을 매칭)</label>
       <input type="date" id="prevBaselineDate">
     </div>
     <button id="savePrevBtn" class="btn btn-secondary" style="width:100%; margin-top:8px;">이전 잔액 저장</button>
@@ -326,7 +326,7 @@
     document.getElementById('prevBank').value = (s.lastActualBank || 0).toFixed(2);
     document.getElementById('prevBaselineDate').value = s.since || asOf;
     document.getElementById('settlementSinceNote').textContent = s.since
-      ? ('마지막 정산: ' + s.since + ' — 그 이후 들어온 주문 기준으로 비교해요 (정산 기준일: ' + asOf + '까지)')
+      ? ('이전 잔액 매출일: ' + s.since + ' — 그다음 매출일부터 ' + asOf + '까지의 매출·지출로 비교해요')
       : '아직 정산한 적 없음 — 이전 잔액을 직접 입력하고 저장한 뒤, 최신 금액을 세어서 정산하기를 눌러주세요.';
     // Prefill the "최신 잔액" inputs with the system's expected amount
     // (이전 잔액 + 그 이후 집계) so the owner only has to correct it if the
