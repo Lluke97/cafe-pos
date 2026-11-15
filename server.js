@@ -485,7 +485,11 @@ app.get('/api/admin/settlement-status', (req, res) => {
   // 정산일(to)을 직접 받아서, 그 사이(둘 다 포함)의 매출·지출을 그대로
   // 더한다. from이 없으면 마지막 정산일의 다음날을 기본값으로 쓴다(편의상
   // 추천값일 뿐 — 클라이언트가 보낸 from/to가 있으면 항상 그걸 우선한다).
-  const defaultFrom = settings.settlement.date ? nextDayStr(settings.settlement.date) : null;
+  // 오늘보다 늦은 날짜를 추천하면 안 되므로(그러면 정산일 기본값인 오늘보다
+  // 늦어져서 바로 "매출 0건" 경고가 뜸) 오늘을 넘지 않게 자른다.
+  const todayMy = todayStr();
+  let defaultFrom = settings.settlement.date ? nextDayStr(settings.settlement.date) : null;
+  if (defaultFrom && defaultFrom > todayMy) defaultFrom = todayMy;
   const from = req.query.from || defaultFrom;
   const to = req.query.to || null;
   const sinceAt = from ? justBeforeDayIso(from) : null;

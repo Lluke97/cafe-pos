@@ -960,6 +960,26 @@
   // One delegated listener on the table body — rows get swapped in/out of
   // edit mode via outerHTML, so re-binding per-button on every render would
   // just be extra bookkeeping for the same result.
+  // 항목(수량/단가)이 바뀔 때마다 합계를 자동으로 다시 계산 — 버튼을 따로
+  // 눌러야만 반영되던 것을 없애고, 입력하는 즉시 바로 합계에 반영되게 함.
+  function recalcOrderTotal(tr) {
+    var totalInput = tr.querySelector('.order-edit-total');
+    if (!totalInput) return;
+    var sum = 0;
+    tr.querySelectorAll('.item-edit-row').forEach(function (row) {
+      var qty = parseFloat(row.querySelector('.item-qty').value) || 0;
+      var price = parseFloat(row.querySelector('.item-price').value) || 0;
+      sum += qty * price;
+    });
+    totalInput.value = sum.toFixed(2);
+  }
+
+  document.getElementById('ordersRows').addEventListener('input', function (ev) {
+    if (ev.target.classList.contains('item-qty') || ev.target.classList.contains('item-price')) {
+      recalcOrderTotal(ev.target.closest('tr'));
+    }
+  });
+
   document.getElementById('ordersRows').addEventListener('click', async function (ev) {
     var editBtn = ev.target.closest('button[data-edit]');
     var cancelBtn = ev.target.closest('button[data-cancel]');
@@ -983,22 +1003,18 @@
       loadOrders(); loadSummary(); loadSettlementStatus();
     } else if (addBtn) {
       addBtn.insertAdjacentHTML('beforebegin', itemEditRowHtml({ name: '', qty: 1, price: 0 }));
+      recalcOrderTotal(addBtn.closest('tr'));
     } else if (removeBtn) {
       var editorDiv = removeBtn.closest('.items-editor');
+      var tr0 = removeBtn.closest('tr');
       if (editorDiv.querySelectorAll('.item-edit-row').length > 1) {
         removeBtn.closest('.item-edit-row').remove();
+        recalcOrderTotal(tr0);
       } else {
         alert('최소 1개 항목은 있어야 해요');
       }
     } else if (recalcBtn) {
-      var tr = recalcBtn.closest('tr');
-      var sum = 0;
-      tr.querySelectorAll('.item-edit-row').forEach(function (row) {
-        var qty = parseFloat(row.querySelector('.item-qty').value) || 0;
-        var price = parseFloat(row.querySelector('.item-price').value) || 0;
-        sum += qty * price;
-      });
-      tr.querySelector('.order-edit-total').value = sum.toFixed(2);
+      recalcOrderTotal(recalcBtn.closest('tr'));
     } else if (saveBtn) {
       var id3 = saveBtn.getAttribute('data-save');
       var tr3 = document.querySelector('#ordersRows tr[data-id="' + id3 + '"]');
