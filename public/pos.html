@@ -68,8 +68,8 @@
     <h3>💵 현금 계산기</h3>
     <div class="cash-row"><span class="label">합계</span><span class="value" id="cashTotal">RM0.00</span></div>
     <div class="cash-row"><span class="label">받은 금액</span><span class="value" id="cashTenderedValue">RM0.00</span></div>
-    <input type="number" id="cashTenderedInput" class="cash-tendered-input" step="0.01" placeholder="직접 입력도 가능">
     <div class="cash-denoms" id="cashDenoms"></div>
+    <button class="cash-exact-btn" id="cashExactBtn">🙌 기타 (금액 맞게 받음)</button>
     <div class="cash-row change"><span class="label" id="cashChangeLabel">거스름돈</span><span class="value" id="cashChange">RM0.00</span></div>
     <div class="cash-modal-actions">
       <button class="reset" id="cashResetBtn">초기화</button>
@@ -129,7 +129,7 @@
   var payMethod = null;
   var PAY_OPTIONS = ['현금', '터치앤고', 'Free'];
   var submitting = false;
-  var CASH_DENOMS = [1, 5, 10, 20, 50, 100]; // MYR banknotes
+  var CASH_DENOMS = [20, 50, 100]; // MYR banknotes most commonly tendered
   var cashTendered = 0;
 
   function fmt(n) {
@@ -279,7 +279,6 @@
     changeEl.classList.toggle('negative', change < 0);
     changeEl.classList.toggle('ok', change >= 0);
     document.getElementById('cashChangeLabel').textContent = change < 0 ? '부족한 금액' : '거스름돈';
-    document.getElementById('cashTenderedInput').value = cashTendered ? cashTendered.toFixed(2) : '';
   }
 
   function renderCashDenoms() {
@@ -307,9 +306,9 @@
     document.getElementById('cashModalBackdrop').hidden = true;
   }
 
-  document.getElementById('cashTenderedInput').addEventListener('input', function (e) {
-    var v = parseFloat(e.target.value);
-    cashTendered = Number.isNaN(v) ? 0 : v;
+  // 금액 맞게 내는 손님용 — 거스름돈 없이 정확히 합계만큼 받은 걸로 처리
+  document.getElementById('cashExactBtn').addEventListener('click', function () {
+    cashTendered = total();
     renderCashModal();
   });
   document.getElementById('cashResetBtn').addEventListener('click', function () {

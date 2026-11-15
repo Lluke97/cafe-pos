@@ -282,8 +282,13 @@ table.admin-table th { color: var(--text-muted); font-weight: 600; font-size: 12
   background: var(--surface-2); color: var(--text); cursor: pointer; -webkit-tap-highlight-color: transparent;
 }
 .cash-denoms button:active { background: var(--accent); color: var(--accent-contrast); }
+.cash-exact-btn {
+  width: 100%; padding: 12px 0; font-size: 14px; font-weight: 700; border-radius: 10px;
+  border: 1px dashed var(--border); background: transparent; color: var(--text-muted);
+  cursor: pointer; -webkit-tap-highlight-color: transparent; margin-bottom: 6px;
+}
+.cash-exact-btn:active { background: var(--surface-2); color: var(--text); }
 .cash-modal-actions { display: flex; gap: 8px; margin-top: 10px; }
 .cash-modal-actions button { flex: 1; padding: 12px 0; border-radius: 10px; font-size: 14px; font-weight: 600; cursor: pointer; }
 .cash-modal-actions .reset { background: var(--surface-2); border: 1px solid var(--border); color: var(--text); }
 .cash-modal-actions .confirm { background: var(--accent); border: 1px solid var(--accent); color: var(--accent-contrast); }
-.cash-tendered-input { width: 100%; padding: 10px; font-size: 16px; border-radius: 8px; border: 1px solid var(--border); background: var(--surface); color: var(--text); margin-top: 4px; }
