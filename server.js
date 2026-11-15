@@ -433,14 +433,15 @@ app.get('/api/admin/summary', (req, res) => {
 // (Monday's own) are left for the next settlement instead of being swept in.
 function recordedTotalsSince(sinceAt, beforeOrAt) {
   const orders = db.getOrders();
-  let cash = 0, tng = 0;
+  let cash = 0, tng = 0, count = 0;
   orders.forEach((o) => {
     if (sinceAt && o.createdAt <= sinceAt) return;
     if (beforeOrAt && o.createdAt > beforeOrAt) return;
+    count += 1;
     if (o.pay === '현금') cash += o.total;
     else if (o.pay === '터치앤고') tng += o.total;
   });
-  return { cash, tng };
+  return { cash, tng, count };
 }
 
 // Same window, but for money that left the drawer/wallet to pay for
@@ -462,21 +463,29 @@ function recordedExpensesSince(sinceAt, beforeOrAt) {
 // Live preview: what's recorded since the last settlement, without settling.
 app.get('/api/admin/settlement-status', (req, res) => {
   const settings = db.getSettings();
+  // ?since=YYYY-MM-DD lets the admin screen override "이전 정산일" live —
+  // the UI always sends whatever that input currently shows, so changing it
+  // immediately recomputes the preview instead of staying stuck on whatever
+  // was last saved on the server (the exact bug this was built to avoid).
+  // Falls back to the saved cursor only if the client doesn't pass one.
+  const sinceDate = req.query.since || settings.settlement.date;
+  const sinceAt = sinceDate ? endOfDayIso(sinceDate) : null;
   // ?asOf=YYYY-MM-DD caps the recorded total to that business date — for
   // settling on Monday for Sunday's sales, so Monday's own orders (already
   // happened by the time you sit down to count) aren't swept in early.
   const beforeOrAt = req.query.asOf ? endOfDayIso(req.query.asOf) : undefined;
-  const recorded = recordedTotalsSince(settings.settlement.at, beforeOrAt);
-  const spent = recordedExpensesSince(settings.settlement.at, beforeOrAt);
+  const recorded = recordedTotalsSince(sinceAt, beforeOrAt);
+  const spent = recordedExpensesSince(sinceAt, beforeOrAt);
   res.json({
-    since: settings.settlement.date,
+    since: sinceDate || null,
     lastActualCash: settings.settlement.actualCash,
     lastActualTng: settings.settlement.actualTng,
     lastActualBank: settings.settlement.actualBank || 0,
     recordedCash: recorded.cash,
     recordedTng: recorded.tng,
     recordedCashExpense: spent.cash,
-    recordedTngExpense: spent.tng
+    recordedTngExpense: spent.tng,
+    orderCount: recorded.count
   });
 });
 
@@ -517,7 +526,7 @@ app.post('/api/admin/settlement-baseline', (req, res) => {
 // actualBank (은행 잔액) is optional and not reconciled against anything —
 // it's just carried through to the youth-budget webhook below.
 app.post('/api/admin/settlement', (req, res) => {
-  const { actualCash, actualTng, actualBank, date } = req.body || {};
+  const { actualCash, actualTng, actualBank, date, since: sinceOverride } = req.body || {};
   if (typeof actualCash !== 'number' || typeof actualTng !== 'number' || Number.isNaN(actualCash) || Number.isNaN(actualTng)) {
     return res.status(400).json({ error: 'actualCash and actualTng must both be numbers' });
   }
@@ -530,8 +539,17 @@ app.post('/api/admin/settlement', (req, res) => {
   const settleDate = date || todayStr();
   const beforeOrAt = endOfDayIso(settleDate);
   const settings = db.getSettings();
-  const since = settings.settlement.date;
-  const sinceAt = settings.settlement.at; // exact previous cutoff, for the report (see below)
+  // "이전 정산일"은 화면에 보이는 입력칸 값을 그대로 받는다 — 저장된 커서를
+  // 그냥 믿으면, 그 커서가 어긋나 있을 때 매출이 계속 0으로 잡히는 문제가
+  // 생긴다 (이전에 실제로 있었던 버그). 화면과 실제 계산이 항상 같은 값을
+  // 쓰도록, 미리보기(settlement-status)에 쓴 것과 동일한 since를 넘겨받는다.
+  const since = sinceOverride || settings.settlement.date;
+  const sinceAt = since ? endOfDayIso(since) : null;
+  if (sinceAt && sinceAt >= beforeOrAt) {
+    return res.status(400).json({
+      error: '이전 정산일(' + since + ')이 매출일(' + settleDate + ')보다 같거나 늦어요 — 매출을 하나도 못 끌어와요. 매출일을 이전 정산일보다 뒤로 선택해주세요.'
+    });
+  }
   const recorded = recordedTotalsSince(sinceAt, beforeOrAt);
   const spent = recordedExpensesSince(sinceAt, beforeOrAt);
   // actualCash/actualTng are the full amount on hand right now ("최신 잔액"),

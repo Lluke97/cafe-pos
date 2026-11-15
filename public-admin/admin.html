@@ -318,16 +318,33 @@
 
   async function loadSettlementStatus() {
     var asOf = document.getElementById('settlementAsOf').value;
-    var s = await api('/api/admin/settlement-status' + (asOf ? ('?asOf=' + asOf) : ''));
+    // "이전 정산일" 입력칸의 현재 값을 그대로 서버에 보낸다 — 저장된 커서를
+    // 그냥 믿으면, 이 값을 고쳐도 미리보기가 안 바뀌는(그래서 계속 매출
+    // RM0.00으로 보이는) 문제가 생긴다. 이 칸을 바꾸면 바로 다시 계산되게.
+    var sinceInput = document.getElementById('prevBaselineDate').value;
+    var qs = [];
+    if (asOf) qs.push('asOf=' + encodeURIComponent(asOf));
+    if (sinceInput) qs.push('since=' + encodeURIComponent(sinceInput));
+    var s = await api('/api/admin/settlement-status' + (qs.length ? ('?' + qs.join('&')) : ''));
     // "이전 잔액" = what was actually counted at the last settlement (or
     // whatever was last saved with "이전 잔액 저장").
     document.getElementById('prevCash').value = (s.lastActualCash || 0).toFixed(2);
     document.getElementById('prevTng').value = (s.lastActualTng || 0).toFixed(2);
     document.getElementById('prevBank').value = (s.lastActualBank || 0).toFixed(2);
-    document.getElementById('prevBaselineDate').value = s.since || asOf;
-    document.getElementById('settlementSinceNote').textContent = s.since
-      ? ('이전 정산일: ' + s.since + ' — 그다음 날부터 매출일 ' + asOf + '까지의 매출·지출로 비교해요')
-      : '아직 정산한 적 없음 — 이전 잔액을 직접 입력하고 저장한 뒤, 최신 금액을 세어서 정산하기를 눌러주세요.';
+    // Only seed "이전 정산일" from the server the very first time (field
+    // still empty) — after that, the field itself drives the window, so
+    // don't stomp over whatever the admin just typed there.
+    if (!sinceInput) document.getElementById('prevBaselineDate').value = s.since || asOf;
+    var countNote = typeof s.orderCount === 'number' ? (' (주문 ' + s.orderCount + '건 반영)') : '';
+    if (s.orderCount === 0) {
+      document.getElementById('settlementSinceNote').innerHTML =
+        '<span style="color:var(--danger, #e06);">⚠ 이 기간에 주문이 0건이에요 — 이전 정산일(' + (s.since || '-') +
+        ')이 매출일(' + asOf + ')보다 늦거나 같으면 매출이 안 잡혀요. 이전 정산일을 더 앞으로 당겨보세요.</span>';
+    } else {
+      document.getElementById('settlementSinceNote').textContent = s.since
+        ? ('이전 정산일: ' + s.since + ' — 그다음 날부터 매출일 ' + asOf + '까지의 매출·지출로 비교해요' + countNote)
+        : '아직 정산한 적 없음 — 이전 잔액을 직접 입력하고 저장한 뒤, 최신 금액을 세어서 정산하기를 눌러주세요.';
+    }
     // Prefill the "최신 잔액" inputs with the system's expected amount
     // (이전 잔액 + 그 이후 집계) so the owner only has to correct it if the
     // real count differs. Bank has no "recorded" figure (cafe-pos doesn't
@@ -347,6 +364,7 @@
     }
     el.addEventListener('change', loadSettlementStatus);
   })();
+  document.getElementById('prevBaselineDate').addEventListener('change', loadSettlementStatus);
 
   document.getElementById('prevCash').addEventListener('input', updateIncreaseDisplay);
   document.getElementById('prevTng').addEventListener('input', updateIncreaseDisplay);
@@ -596,11 +614,19 @@
     if (actualBank !== undefined) body.actualBank = actualBank;
     var asOf = document.getElementById('settlementAsOf').value;
     if (asOf) body.date = asOf;
+    // 미리보기에 쓴 것과 똑같은 "이전 정산일"을 그대로 넘겨서, 화면에 보인
+    // 매출/지출과 실제로 기록되는 값이 항상 일치하게 한다.
+    var sinceInput = document.getElementById('prevBaselineDate').value;
+    if (sinceInput) body.since = sinceInput;
     var res = await fetch('/api/admin/settlement', {
       method: 'POST',
       headers: { 'Content-Type': 'application/json' },
       body: JSON.stringify(body)
     });
+    if (!res.ok) {
+      var err = await res.json().catch(function () { return {}; });
+      return alert(err.error || '정산에 실패했어요');
+    }
     var record = await res.json();
     var box = document.getElementById('settleResult');
     var allOk = Math.abs(record.diffCash) < 0.01 && Math.abs(record.diffTng) < 0.01;
