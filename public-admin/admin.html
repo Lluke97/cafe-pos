@@ -65,6 +65,7 @@
   <div class="tab" data-tab="orders">주문 내역</div>
   <div class="tab" data-tab="expenses">구매·지출</div>
   <div class="tab" data-tab="menu">메뉴 관리</div>
+  <div class="tab" data-tab="cashcount">🧮 현금 계산기</div>
 </div>
 
 <section id="tab-summary" class="admin-section">
@@ -206,9 +207,10 @@
   </div>
 </section>
 
-<div class="cash-modal-backdrop" id="cashCountBackdrop" hidden>
-  <div class="cash-modal">
-    <h3>🧮 현금 세기</h3>
+<section id="tab-cashcount" class="admin-section hidden">
+  <div class="settlement-card" style="margin:16px; max-width:420px;">
+    <h2 style="margin:0 0 10px; font-size:15px; font-weight:700;">🧮 현금 세기</h2>
+    <div style="font-size:12px; color:var(--text-muted); margin-bottom:10px;">지폐 개수만 세어 입력하면 합계가 자동 계산돼요. "적용"을 누르면 요약 탭의 최신 현금 잔액에 바로 채워져요.</div>
     <div class="cash-count-rows" id="cashCountRows"></div>
     <div class="cash-row" style="margin-top:4px;">
       <span class="label">🪙 동전 (합계)</span>
@@ -221,10 +223,11 @@
     <div class="cash-row change" style="margin-top:10px;"><span class="label">합계</span><span class="value ok" id="cashCountTotal">RM0.00</span></div>
     <div class="cash-modal-actions">
       <button class="reset" id="cashCountResetBtn">초기화</button>
-      <button class="confirm" id="cashCountApplyBtn">적용</button>
+      <button class="confirm" id="cashCountApplyBtn">적용 (최신 현금 잔액에 반영)</button>
     </div>
+    <span id="cashCountApplyDone" style="display:none; font-size:12px; color:var(--ok); margin-top:6px;">적용됐어요 ✓ — 요약 탭에서 확인하세요</span>
   </div>
-</div>
+</section>
 
 <script>
   function fmt(n) {
@@ -244,13 +247,14 @@
     document.getElementById('navMenu').hidden = true;
   });
 
+  function switchTab(name) {
+    document.querySelectorAll('.admin-tabs .tab').forEach(function (t) { t.classList.toggle('active', t.getAttribute('data-tab') === name); });
+    document.querySelectorAll('.admin-section').forEach(function (s) { s.classList.add('hidden'); });
+    document.getElementById('tab-' + name).classList.remove('hidden');
+  }
+
   document.querySelectorAll('.admin-tabs .tab').forEach(function (tab) {
-    tab.addEventListener('click', function () {
-      document.querySelectorAll('.admin-tabs .tab').forEach(function (t) { t.classList.remove('active'); });
-      tab.classList.add('active');
-      document.querySelectorAll('.admin-section').forEach(function (s) { s.classList.add('hidden'); });
-      document.getElementById('tab-' + tab.getAttribute('data-tab')).classList.remove('hidden');
-    });
+    tab.addEventListener('click', function () { switchTab(tab.getAttribute('data-tab')); });
   });
 
   async function api(path, opts) {
@@ -363,15 +367,9 @@
     return total;
   }
 
-  function openCashCountModal() {
-    renderCashCountRows();
-    document.getElementById('cashCountCoins').value = '';
-    document.getElementById('cashCountOther').value = '';
-    updateCashCountTotal();
-    document.getElementById('cashCountBackdrop').hidden = false;
-  }
+  renderCashCountRows();
 
-  document.getElementById('cashCountBtn').addEventListener('click', openCashCountModal);
+  document.getElementById('cashCountBtn').addEventListener('click', function () { switchTab('cashcount'); });
   document.getElementById('cashCountCoins').addEventListener('input', updateCashCountTotal);
   document.getElementById('cashCountOther').addEventListener('input', updateCashCountTotal);
   document.getElementById('cashCountResetBtn').addEventListener('click', function () {
@@ -384,10 +382,9 @@
     var total = updateCashCountTotal();
     document.getElementById('actualCash').value = total.toFixed(2);
     updateIncreaseDisplay();
-    document.getElementById('cashCountBackdrop').hidden = true;
-  });
-  document.getElementById('cashCountBackdrop').addEventListener('click', function (e) {
-    if (e.target === e.currentTarget) document.getElementById('cashCountBackdrop').hidden = true;
+    var done = document.getElementById('cashCountApplyDone');
+    done.style.display = 'block';
+    setTimeout(function () { done.style.display = 'none'; }, 2500);
   });
 
   function diffHtml(label, diff) {
