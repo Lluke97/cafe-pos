@@ -282,6 +282,10 @@
     document.querySelectorAll('.admin-tabs .tab').forEach(function (t) { t.classList.toggle('active', t.getAttribute('data-tab') === name); });
     document.querySelectorAll('.admin-section').forEach(function (s) { s.classList.add('hidden'); });
     document.getElementById('tab-' + name).classList.remove('hidden');
+    // 주문/지출 탭에서 금액을 고치고 요약 탭으로 돌아오면 정산 미리보기도
+    // 최신 값으로 다시 계산되게 — 탭 전환만으로는 자동 새로고침이 안 되므로
+    // 여기서 한 번 더 확실히 불러온다.
+    if (name === 'summary') loadSettlementStatus();
   }
 
   document.querySelectorAll('.admin-tabs .tab').forEach(function (tab) {
@@ -976,7 +980,7 @@
     } else if (delBtn) {
       if (!confirm('이 주문을 삭제할까요?')) return;
       await fetch('/api/admin/orders/' + delBtn.getAttribute('data-del'), { method: 'DELETE' });
-      loadOrders(); loadSummary();
+      loadOrders(); loadSummary(); loadSettlementStatus();
     } else if (addBtn) {
       addBtn.insertAdjacentHTML('beforebegin', itemEditRowHtml({ name: '', qty: 1, price: 0 }));
     } else if (removeBtn) {
@@ -1017,7 +1021,7 @@
         headers: { 'Content-Type': 'application/json' },
         body: JSON.stringify({ pay: pay, total: total, device: device || null, createdAt: createdAt, items: items })
       });
-      loadOrders(); loadSummary();
+      loadOrders(); loadSummary(); loadSettlementStatus();
     }
   });
 
@@ -1084,14 +1088,14 @@
           headers: { 'Content-Type': 'application/json' },
           body: JSON.stringify({ category: category, payment: payment, amount: amount, memo: memo })
         });
-        loadExpenses(); loadSummary();
+        loadExpenses(); loadSummary(); loadSettlementStatus();
       });
     });
     document.querySelectorAll('#expensesRows button[data-del]').forEach(function (b) {
       b.addEventListener('click', async function () {
         if (!confirm('이 내역을 삭제할까요?')) return;
         await fetch('/api/admin/expenses/' + b.getAttribute('data-del'), { method: 'DELETE' });
-        loadExpenses(); loadSummary();
+        loadExpenses(); loadSummary(); loadSettlementStatus();
       });
     });
   }
