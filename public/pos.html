@@ -63,6 +63,21 @@
   </div>
 </div>
 
+<div class="cash-modal-backdrop" id="cashModalBackdrop" hidden>
+  <div class="cash-modal">
+    <h3>💵 현금 계산기</h3>
+    <div class="cash-row"><span class="label">합계</span><span class="value" id="cashTotal">RM0.00</span></div>
+    <div class="cash-row"><span class="label">받은 금액</span><span class="value" id="cashTenderedValue">RM0.00</span></div>
+    <input type="number" id="cashTenderedInput" class="cash-tendered-input" step="0.01" placeholder="직접 입력도 가능">
+    <div class="cash-denoms" id="cashDenoms"></div>
+    <div class="cash-row change"><span class="label" id="cashChangeLabel">거스름돈</span><span class="value" id="cashChange">RM0.00</span></div>
+    <div class="cash-modal-actions">
+      <button class="reset" id="cashResetBtn">초기화</button>
+      <button class="confirm" id="cashConfirmBtn">확인</button>
+    </div>
+  </div>
+</div>
+
 <div id="view-history" hidden>
   <div class="recent-panel">
     <div class="recent-head">
@@ -114,6 +129,8 @@
   var payMethod = null;
   var PAY_OPTIONS = ['현금', '터치앤고', 'Free'];
   var submitting = false;
+  var CASH_DENOMS = [1, 5, 10, 20, 50, 100]; // MYR banknotes
+  var cashTendered = 0;
 
   function fmt(n) {
     return 'RM' + n.toLocaleString('en-MY', { minimumFractionDigits: 2, maximumFractionDigits: 2 });
@@ -243,10 +260,66 @@
       chip.innerHTML = '<span class="pay-chip-emoji"></span><span></span>';
       chip.querySelector('.pay-chip-emoji').textContent = payIcon;
       chip.querySelector('span:last-child').textContent = p;
-      chip.addEventListener('click', function () { payMethod = p; render(); });
+      chip.addEventListener('click', function () {
+        payMethod = p;
+        render();
+        if (p === '현금') openCashModal();
+      });
       row.appendChild(chip);
     });
   }
+
+  // ---------- 현금 계산기 (받은 금액 → 거스름돈) ----------
+  function renderCashModal() {
+    document.getElementById('cashTotal').textContent = fmt(total());
+    document.getElementById('cashTenderedValue').textContent = fmt(cashTendered);
+    var change = cashTendered - total();
+    var changeEl = document.getElementById('cashChange');
+    changeEl.textContent = fmt(Math.abs(change));
+    changeEl.classList.toggle('negative', change < 0);
+    changeEl.classList.toggle('ok', change >= 0);
+    document.getElementById('cashChangeLabel').textContent = change < 0 ? '부족한 금액' : '거스름돈';
+    document.getElementById('cashTenderedInput').value = cashTendered ? cashTendered.toFixed(2) : '';
+  }
+
+  function renderCashDenoms() {
+    var wrap = document.getElementById('cashDenoms');
+    wrap.innerHTML = '';
+    CASH_DENOMS.forEach(function (v) {
+      var btn = document.createElement('button');
+      btn.textContent = 'RM' + v;
+      btn.addEventListener('click', function () {
+        cashTendered += v;
+        renderCashModal();
+      });
+      wrap.appendChild(btn);
+    });
+  }
+
+  function openCashModal() {
+    cashTendered = 0;
+    renderCashDenoms();
+    renderCashModal();
+    document.getElementById('cashModalBackdrop').hidden = false;
+  }
+
+  function closeCashModal() {
+    document.getElementById('cashModalBackdrop').hidden = true;
+  }
+
+  document.getElementById('cashTenderedInput').addEventListener('input', function (e) {
+    var v = parseFloat(e.target.value);
+    cashTendered = Number.isNaN(v) ? 0 : v;
+    renderCashModal();
+  });
+  document.getElementById('cashResetBtn').addEventListener('click', function () {
+    cashTendered = 0;
+    renderCashModal();
+  });
+  document.getElementById('cashConfirmBtn').addEventListener('click', closeCashModal);
+  document.getElementById('cashModalBackdrop').addEventListener('click', function (e) {
+    if (e.target === e.currentTarget) closeCashModal();
+  });
 
   function total() {
     return MENU.reduce(function (sum, it) { return sum + it.price * (cart[it.id] || 0); }, 0);

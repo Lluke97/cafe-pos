@@ -254,3 +254,36 @@ table.admin-table th { color: var(--text-muted); font-weight: 600; font-size: 12
 .kpi-card .value { font-size: 18px; font-weight: 700; margin-top: 2px; }
 .btn-small { padding: 6px 10px; font-size: 12px; border-radius: 8px; border: 1px solid var(--border); background: var(--surface-2); cursor: pointer; }
 .btn-danger { color: var(--danger); }
+
+/* ---------- Cash calculator modal (POS) ---------- */
+.cash-modal-backdrop {
+  position: fixed; inset: 0; background: rgba(0,0,0,.45); z-index: 100;
+  display: flex; align-items: flex-end; justify-content: center;
+}
+@media (min-width: 640px) {
+  .cash-modal-backdrop { align-items: center; }
+}
+.cash-modal {
+  background: var(--surface); border-radius: 16px 16px 0 0; width: 100%; max-width: 420px;
+  padding: 20px; box-shadow: var(--shadow); max-height: 90vh; overflow-y: auto;
+}
+@media (min-width: 640px) {
+  .cash-modal { border-radius: 16px; }
+}
+.cash-modal h3 { margin: 0 0 14px; font-size: 16px; }
+.cash-modal .cash-row { display: flex; justify-content: space-between; align-items: baseline; margin-bottom: 8px; }
+.cash-modal .cash-row .label { font-size: 13px; color: var(--text-muted); }
+.cash-modal .cash-row .value { font-size: 20px; font-weight: 700; }
+.cash-modal .cash-row.change .value.negative { color: var(--danger); }
+.cash-modal .cash-row.change .value.ok { color: var(--ok); }
+.cash-denoms { display: grid; grid-template-columns: repeat(3, 1fr); gap: 8px; margin: 14px 0; }
+.cash-denoms button {
+  padding: 14px 0; font-size: 16px; font-weight: 700; border-radius: 10px; border: 1px solid var(--border);
+  background: var(--surface-2); color: var(--text); cursor: pointer; -webkit-tap-highlight-color: transparent;
+}
+.cash-denoms button:active { background: var(--accent); color: var(--accent-contrast); }
+.cash-modal-actions { display: flex; gap: 8px; margin-top: 10px; }
+.cash-modal-actions button { flex: 1; padding: 12px 0; border-radius: 10px; font-size: 14px; font-weight: 600; cursor: pointer; }
+.cash-modal-actions .reset { background: var(--surface-2); border: 1px solid var(--border); color: var(--text); }
+.cash-modal-actions .confirm { background: var(--accent); border: 1px solid var(--accent); color: var(--accent-contrast); }
+.cash-tendered-input { width: 100%; padding: 10px; font-size: 16px; border-radius: 8px; border: 1px solid var(--border); background: var(--surface); color: var(--text); margin-top: 4px; }
