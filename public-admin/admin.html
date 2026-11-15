@@ -75,6 +75,10 @@
   <div class="settlement-card" id="settlementCard">
     <h2 style="margin:0 0 10px; font-size:15px; font-weight:700;">💰 정산 (현금 · 터치앤고 실사)</h2>
     <div id="settlementSinceNote" style="font-size:12px; color:var(--text-muted); margin-bottom:10px;"></div>
+    <div class="field" style="max-width:220px; margin-bottom:10px;">
+      <label>📅 정산 기준일 (예: 일요일 영업분을 월요일에 정산)</label>
+      <input type="date" id="settlementAsOf">
+    </div>
     <div class="settlement-row">
       <div class="field" style="flex:1;">
         <label>💵 이전 현금 잔액 (직접 수정 가능)</label>
@@ -309,14 +313,15 @@
   }
 
   async function loadSettlementStatus() {
-    var s = await api('/api/admin/settlement-status');
+    var asOf = document.getElementById('settlementAsOf').value;
+    var s = await api('/api/admin/settlement-status' + (asOf ? ('?asOf=' + asOf) : ''));
     // "이전 잔액" = what was actually counted at the last settlement (or
     // whatever was last saved with "이전 잔액 저장").
     document.getElementById('prevCash').value = (s.lastActualCash || 0).toFixed(2);
     document.getElementById('prevTng').value = (s.lastActualTng || 0).toFixed(2);
     document.getElementById('prevBank').value = (s.lastActualBank || 0).toFixed(2);
     document.getElementById('settlementSinceNote').textContent = s.since
-      ? ('마지막 정산: ' + s.since + ' — 그 이후 들어온 주문 기준으로 비교해요')
+      ? ('마지막 정산: ' + s.since + ' — 그 이후 들어온 주문 기준으로 비교해요 (정산 기준일: ' + asOf + '까지)')
       : '아직 정산한 적 없음 — 이전 잔액을 직접 입력하고 저장한 뒤, 최신 금액을 세어서 정산하기를 눌러주세요.';
     // Prefill the "최신 잔액" inputs with the system's expected amount
     // (이전 잔액 + 그 이후 집계) so the owner only has to correct it if the
@@ -327,6 +332,16 @@
     document.getElementById('actualBank').value = (s.lastActualBank || 0).toFixed(2);
     updateIncreaseDisplay();
   }
+
+  (function initSettlementAsOf() {
+    var el = document.getElementById('settlementAsOf');
+    if (!el.value) {
+      var now = new Date();
+      var pad = function (n) { return String(n).padStart(2, '0'); };
+      el.value = now.getFullYear() + '-' + pad(now.getMonth() + 1) + '-' + pad(now.getDate());
+    }
+    el.addEventListener('change', loadSettlementStatus);
+  })();
 
   document.getElementById('prevCash').addEventListener('input', updateIncreaseDisplay);
   document.getElementById('prevTng').addEventListener('input', updateIncreaseDisplay);
@@ -560,6 +575,8 @@
     if (actualBank !== undefined && Number.isNaN(actualBank)) return alert('은행 잔액을 숫자로 입력해주세요');
     var body = { actualCash: actualCash, actualTng: actualTng };
     if (actualBank !== undefined) body.actualBank = actualBank;
+    var asOf = document.getElementById('settlementAsOf').value;
+    if (asOf) body.date = asOf;
     var res = await fetch('/api/admin/settlement', {
       method: 'POST',
       headers: { 'Content-Type': 'application/json' },
@@ -816,25 +833,88 @@
     downloadCsv('구매지출내역_' + window.cafeTime.ymd(new Date()) + '.csv', rows);
   });
 
-  // ---------- Orders ----------
+  // ---------- Orders (with inline edit for 결제/합계) ----------
+  function orderDesc(o) {
+    return o.items.map(function (i) { return i.name + ' x' + i.qty; }).join(', ');
+  }
+
+  function orderRowHtml(o) {
+    return '<tr data-id="' + o.id + '">' +
+      '<td>' + window.cafeTime.hms(o.createdAt) + '</td>' +
+      '<td>' + orderDesc(o) + '</td>' +
+      '<td>' + (o.pay || '-') + '</td>' +
+      '<td>' + (o.device || '-') + '</td>' +
+      '<td>' + fmt(o.total) + '</td>' +
+      '<td class="row-actions">' +
+        '<button class="btn-small" data-edit="' + o.id + '">수정</button>' +
+        '<button class="btn-small btn-danger" data-del="' + o.id + '">삭제</button>' +
+      '</td></tr>';
+  }
+
+  function orderEditRowHtml(o) {
+    return '<tr data-id="' + o.id + '">' +
+      '<td>' + window.cafeTime.hms(o.createdAt) + '</td>' +
+      '<td>' + orderDesc(o) + '</td>' +
+      '<td><select data-f="pay">' +
+        '<option value="현금"' + (o.pay === '현금' ? ' selected' : '') + '>현금</option>' +
+        '<option value="터치앤고"' + (o.pay === '터치앤고' ? ' selected' : '') + '>터치앤고</option>' +
+      '</select></td>' +
+      '<td>' + (o.device || '-') + '</td>' +
+      '<td><input type="number" step="0.01" value="' + o.total + '" data-f="total" style="width:80px"></td>' +
+      '<td class="row-actions">' +
+        '<button class="btn-small inline-save" data-save="' + o.id + '">저장</button>' +
+        '<button class="btn-small" data-cancel="' + o.id + '">취소</button>' +
+      '</td></tr>';
+  }
+
+  function bindOrderRowEvents() {
+    document.querySelectorAll('#ordersRows button[data-edit]').forEach(function (b) {
+      b.addEventListener('click', function () {
+        var id = b.getAttribute('data-edit');
+        var o = lastOrders.find(function (x) { return x.id === id; });
+        document.querySelector('#ordersRows tr[data-id="' + id + '"]').outerHTML = orderEditRowHtml(o);
+        bindOrderRowEvents();
+      });
+    });
+    document.querySelectorAll('#ordersRows button[data-cancel]').forEach(function (b) {
+      b.addEventListener('click', function () {
+        var id = b.getAttribute('data-cancel');
+        var o = lastOrders.find(function (x) { return x.id === id; });
+        document.querySelector('#ordersRows tr[data-id="' + id + '"]').outerHTML = orderRowHtml(o);
+        bindOrderRowEvents();
+      });
+    });
+    document.querySelectorAll('#ordersRows button[data-save]').forEach(function (b) {
+      b.addEventListener('click', async function () {
+        var id = b.getAttribute('data-save');
+        var tr = document.querySelector('#ordersRows tr[data-id="' + id + '"]');
+        var pay = tr.querySelector('[data-f="pay"]').value;
+        var total = parseFloat(tr.querySelector('[data-f="total"]').value);
+        if (Number.isNaN(total) || total <= 0) return alert('합계를 올바르게 입력해주세요');
+        await fetch('/api/admin/orders/' + id, {
+          method: 'PUT',
+          headers: { 'Content-Type': 'application/json' },
+          body: JSON.stringify({ pay: pay, total: total })
+        });
+        loadOrders(); loadSummary();
+      });
+    });
+    document.querySelectorAll('#ordersRows button[data-del]').forEach(function (b) {
+      b.addEventListener('click', async function () {
+        if (!confirm('이 주문을 삭제할까요?')) return;
+        await fetch('/api/admin/orders/' + b.getAttribute('data-del'), { method: 'DELETE' });
+        loadOrders(); loadSummary();
+      });
+    });
+  }
+
   async function loadOrders() {
     var dateVal = document.getElementById('ordersDate').value;
     var qs = dateVal ? ('?date=' + dateVal) : '';
     var orders = await api('/api/admin/orders' + qs);
     lastOrders = orders;
-    document.getElementById('ordersRows').innerHTML = orders.map(function (o) {
-      var desc = o.items.map(function (i) { return i.name + ' x' + i.qty; }).join(', ');
-      var time = window.cafeTime.hms(o.createdAt);
-      return '<tr><td>' + time + '</td><td>' + desc + '</td><td>' + (o.pay || '-') + '</td><td>' + (o.device || '-') + '</td><td>' + fmt(o.total) + '</td>' +
-        '<td><button class="btn-small btn-danger" data-id="' + o.id + '">삭제</button></td></tr>';
-    }).join('') || '<tr><td colspan="6">주문 없음</td></tr>';
-    document.querySelectorAll('#ordersRows button').forEach(function (b) {
-      b.addEventListener('click', async function () {
-        if (!confirm('이 주문을 삭제할까요?')) return;
-        await fetch('/api/admin/orders/' + b.getAttribute('data-id'), { method: 'DELETE' });
-        loadOrders(); loadSummary();
-      });
-    });
+    document.getElementById('ordersRows').innerHTML = orders.map(orderRowHtml).join('') || '<tr><td colspan="6">주문 없음</td></tr>';
+    bindOrderRowEvents();
   }
   document.getElementById('ordersDate').addEventListener('change', loadOrders);
 

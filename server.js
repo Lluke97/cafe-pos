@@ -131,6 +131,16 @@ function todayStr(d) {
   return myDateStr(dt);
 }
 
+// End of a given MY_TZ calendar day (23:59:59.999 local), as a UTC ISO
+// string — used to cap a settlement to a specific business date (e.g.
+// settling on Monday for Sunday's sales) instead of always "right now".
+// MY_TZ has no DST, so it's always a fixed +08:00 offset.
+function endOfDayIso(dateStr) {
+  const [y, m, d] = dateStr.split('-').map(Number);
+  const nextDayMidnightUtcMs = Date.UTC(y, m - 1, d + 1, 0, 0, 0, 0) - 8 * 3600 * 1000;
+  return new Date(nextDayMidnightUtcMs - 1).toISOString();
+}
+
 // ---------------- Public pages ----------------
 app.use(express.static(path.join(__dirname, 'public')));
 
@@ -295,6 +305,25 @@ app.delete('/api/admin/orders/:id', (req, res) => {
   res.json({ ok: true });
 });
 
+// Fix a mistyped payment method or total on an existing order (e.g. the
+// cashier picked the wrong button). Items/device/time are left alone.
+app.put('/api/admin/orders/:id', (req, res) => {
+  const { pay, total } = req.body || {};
+  if (pay !== '현금' && pay !== '터치앤고') {
+    return res.status(400).json({ error: "pay must be '현금' or '터치앤고'" });
+  }
+  if (typeof total !== 'number' || Number.isNaN(total) || total <= 0) {
+    return res.status(400).json({ error: 'total must be a positive number' });
+  }
+  const orders = db.getOrders();
+  const idx = orders.findIndex((o) => o.id === req.params.id);
+  if (idx === -1) return res.status(404).json({ error: 'not found' });
+  orders[idx].pay = pay;
+  orders[idx].total = total;
+  db.saveOrders(orders);
+  res.json(orders[idx]);
+});
+
 app.get('/api/admin/expenses', (req, res) => {
   let expenses = db.getExpenses();
   if (req.query.date) expenses = expenses.filter((e) => e.date === req.query.date);
@@ -344,11 +373,15 @@ app.get('/api/admin/summary', (req, res) => {
 // has never been one). Comparing full timestamps — not just the date — means
 // a second settlement done later the same day still only counts orders
 // placed after the first one, instead of double-counting or missing them.
-function recordedTotalsSince(sinceAt) {
+// beforeOrAt: optional ISO upper bound (inclusive), e.g. endOfDayIso('2026-11-15')
+// when settling on Monday for Sunday's business — orders after that cutoff
+// (Monday's own) are left for the next settlement instead of being swept in.
+function recordedTotalsSince(sinceAt, beforeOrAt) {
   const orders = db.getOrders();
   let cash = 0, tng = 0;
   orders.forEach((o) => {
     if (sinceAt && o.createdAt <= sinceAt) return;
+    if (beforeOrAt && o.createdAt > beforeOrAt) return;
     if (o.pay === '현금') cash += o.total;
     else if (o.pay === '터치앤고') tng += o.total;
   });
@@ -358,7 +391,11 @@ function recordedTotalsSince(sinceAt) {
 // Live preview: what's recorded since the last settlement, without settling.
 app.get('/api/admin/settlement-status', (req, res) => {
   const settings = db.getSettings();
-  const recorded = recordedTotalsSince(settings.settlement.at);
+  // ?asOf=YYYY-MM-DD caps the recorded total to that business date — for
+  // settling on Monday for Sunday's sales, so Monday's own orders (already
+  // happened by the time you sit down to count) aren't swept in early.
+  const beforeOrAt = req.query.asOf ? endOfDayIso(req.query.asOf) : undefined;
+  const recorded = recordedTotalsSince(settings.settlement.at, beforeOrAt);
   res.json({
     since: settings.settlement.date,
     lastActualCash: settings.settlement.actualCash,
@@ -401,16 +438,21 @@ app.post('/api/admin/settlement-baseline', (req, res) => {
 // actualBank (은행 잔액) is optional and not reconciled against anything —
 // it's just carried through to the youth-budget webhook below.
 app.post('/api/admin/settlement', (req, res) => {
-  const { actualCash, actualTng, actualBank } = req.body || {};
+  const { actualCash, actualTng, actualBank, date } = req.body || {};
   if (typeof actualCash !== 'number' || typeof actualTng !== 'number' || Number.isNaN(actualCash) || Number.isNaN(actualTng)) {
     return res.status(400).json({ error: 'actualCash and actualTng must both be numbers' });
   }
   if (actualBank !== undefined && (typeof actualBank !== 'number' || Number.isNaN(actualBank))) {
     return res.status(400).json({ error: 'actualBank must be a number if provided' });
   }
+  // date = the business day being settled (e.g. still Sunday's business when
+  // settling on Monday morning) — defaults to today when not given. Orders
+  // after that day's end are left for the next settlement, not counted here.
+  const settleDate = date || todayStr();
+  const beforeOrAt = endOfDayIso(settleDate);
   const settings = db.getSettings();
   const since = settings.settlement.date;
-  const recorded = recordedTotalsSince(settings.settlement.at);
+  const recorded = recordedTotalsSince(settings.settlement.at, beforeOrAt);
   // actualCash/actualTng are the full amount on hand right now ("최신 잔액"),
   // so what we expect them to be is last time's balance plus what came in
   // since — not just the new sales on their own.
@@ -421,7 +463,7 @@ app.post('/api/admin/settlement', (req, res) => {
   const record = {
     id: uid(),
     createdAt: nowIso,
-    date: todayStr(),
+    date: settleDate,
     since,
     prevCash: settings.settlement.actualCash || 0,
     prevTng: settings.settlement.actualTng || 0,
@@ -439,7 +481,11 @@ app.post('/api/admin/settlement', (req, res) => {
   settlements.push(record);
   db.saveSettlements(settlements);
 
-  settings.settlement = { at: nowIso, date: record.date, actualCash, actualTng, actualBank: bankValue };
+  // The next settlement's lower bound is the end of the settled business
+  // day, not this literal click time — so if today's (Monday's) orders have
+  // already started coming in, they stay uncounted until the next
+  // settlement instead of being swallowed into this one.
+  settings.settlement = { at: beforeOrAt, date: record.date, actualCash, actualTng, actualBank: bankValue };
   db.saveSettings(settings);
 
   res.status(201).json(record);
