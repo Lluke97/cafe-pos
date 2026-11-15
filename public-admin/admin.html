@@ -94,10 +94,7 @@
     <div class="settlement-row" style="margin-top:12px;">
       <div class="field" style="flex:1;">
         <label>💵 최신 현금 잔액 (세어본 금액)</label>
-        <div style="display:flex; gap:6px;">
-          <input type="number" id="actualCash" step="0.01" placeholder="예: 350.00" style="flex:1;">
-          <button type="button" id="cashCountBtn" class="btn btn-secondary" style="white-space:nowrap;">🧮 계산기</button>
-        </div>
+        <input type="number" id="actualCash" step="0.01" placeholder="예: 350.00">
       </div>
       <div class="field" style="flex:1;">
         <label>📱 최신 터치앤고 잔액 (앱/명세 확인)</label>
@@ -208,24 +205,48 @@
 </section>
 
 <section id="tab-cashcount" class="admin-section hidden">
-  <div class="settlement-card" style="margin:16px; max-width:420px;">
-    <h2 style="margin:0 0 10px; font-size:15px; font-weight:700;">🧮 현금 세기</h2>
-    <div style="font-size:12px; color:var(--text-muted); margin-bottom:10px;">지폐 개수만 세어 입력하면 합계가 자동 계산돼요. "적용"을 누르면 요약 탭의 최신 현금 잔액에 바로 채워져요.</div>
-    <div class="cash-count-rows" id="cashCountRows"></div>
-    <div class="cash-row" style="margin-top:4px;">
-      <span class="label">🪙 동전 (합계)</span>
-      <input type="number" id="cashCountCoins" class="cash-count-amount" step="0.01" placeholder="0.00">
+  <div style="display:flex; flex-wrap:wrap; gap:16px; margin:16px;">
+    <div class="settlement-card" style="max-width:420px; flex:1 1 320px;">
+      <h2 style="margin:0 0 10px; font-size:15px; font-weight:700;">🧮 현금 세기</h2>
+      <div style="font-size:12px; color:var(--text-muted); margin-bottom:10px;">지폐 개수만 세어 입력하면 합계가 자동 계산돼요.</div>
+      <div class="cash-count-rows" id="cashCountRows"></div>
+      <div class="cash-row" style="margin-top:4px;">
+        <span class="label">🪙 동전 (합계)</span>
+        <input type="number" id="cashCountCoins" class="cash-count-amount" step="0.01" placeholder="0.00">
+      </div>
+      <div class="cash-row">
+        <span class="label">➕ 기타</span>
+        <input type="number" id="cashCountOther" class="cash-count-amount" step="0.01" placeholder="0.00">
+      </div>
+      <div class="cash-row change" style="margin-top:10px;"><span class="label">합계</span><span class="value ok" id="cashCountTotal">RM0.00</span></div>
+      <div class="cash-modal-actions">
+        <button class="reset" id="cashCountResetBtn">초기화</button>
+      </div>
     </div>
-    <div class="cash-row">
-      <span class="label">➕ 기타</span>
-      <input type="number" id="cashCountOther" class="cash-count-amount" step="0.01" placeholder="0.00">
+    <div class="settlement-card" style="max-width:260px; flex:0 1 260px;">
+      <h2 style="margin:0 0 10px; font-size:15px; font-weight:700;">🖩 계산기</h2>
+      <div class="calc-display" id="calcDisplay">0</div>
+      <div class="calc-grid">
+        <button class="calc-key clear" data-key="C">C</button>
+        <button class="calc-key" data-key="back">⌫</button>
+        <button class="calc-key op" data-key="/">÷</button>
+        <button class="calc-key op" data-key="*">×</button>
+        <button class="calc-key" data-key="7">7</button>
+        <button class="calc-key" data-key="8">8</button>
+        <button class="calc-key" data-key="9">9</button>
+        <button class="calc-key op" data-key="-">−</button>
+        <button class="calc-key" data-key="4">4</button>
+        <button class="calc-key" data-key="5">5</button>
+        <button class="calc-key" data-key="6">6</button>
+        <button class="calc-key op" data-key="+">+</button>
+        <button class="calc-key" data-key="1">1</button>
+        <button class="calc-key" data-key="2">2</button>
+        <button class="calc-key" data-key="3">3</button>
+        <button class="calc-key eq" data-key="=" style="grid-row: span 2;">=</button>
+        <button class="calc-key" data-key="0" style="grid-column: span 2;">0</button>
+        <button class="calc-key" data-key=".">.</button>
+      </div>
     </div>
-    <div class="cash-row change" style="margin-top:10px;"><span class="label">합계</span><span class="value ok" id="cashCountTotal">RM0.00</span></div>
-    <div class="cash-modal-actions">
-      <button class="reset" id="cashCountResetBtn">초기화</button>
-      <button class="confirm" id="cashCountApplyBtn">적용 (최신 현금 잔액에 반영)</button>
-    </div>
-    <span id="cashCountApplyDone" style="display:none; font-size:12px; color:var(--ok); margin-top:6px;">적용됐어요 ✓ — 요약 탭에서 확인하세요</span>
   </div>
 </section>
 
@@ -369,7 +390,6 @@
 
   renderCashCountRows();
 
-  document.getElementById('cashCountBtn').addEventListener('click', function () { switchTab('cashcount'); });
   document.getElementById('cashCountCoins').addEventListener('input', updateCashCountTotal);
   document.getElementById('cashCountOther').addEventListener('input', updateCashCountTotal);
   document.getElementById('cashCountResetBtn').addEventListener('click', function () {
@@ -378,13 +398,68 @@
     document.getElementById('cashCountOther').value = '';
     updateCashCountTotal();
   });
-  document.getElementById('cashCountApplyBtn').addEventListener('click', function () {
-    var total = updateCashCountTotal();
-    document.getElementById('actualCash').value = total.toFixed(2);
-    updateIncreaseDisplay();
-    var done = document.getElementById('cashCountApplyDone');
-    done.style.display = 'block';
-    setTimeout(function () { done.style.display = 'none'; }, 2500);
+
+  // ---------- 진짜 계산기 (일반 사칙연산) ----------
+  var calc = { display: '0', prev: null, operator: null, waitingForOperand: false };
+
+  function calcRender() {
+    document.getElementById('calcDisplay').textContent = calc.display;
+  }
+
+  function calcInputDigit(d) {
+    if (calc.waitingForOperand) {
+      calc.display = d;
+      calc.waitingForOperand = false;
+    } else {
+      calc.display = calc.display === '0' ? d : calc.display + d;
+    }
+  }
+
+  function calcInputDot() {
+    if (calc.waitingForOperand) { calc.display = '0.'; calc.waitingForOperand = false; return; }
+    if (calc.display.indexOf('.') === -1) calc.display += '.';
+  }
+
+  function calcBackspace() {
+    if (calc.waitingForOperand) return;
+    calc.display = calc.display.length > 1 ? calc.display.slice(0, -1) : '0';
+  }
+
+  function calcClear() {
+    calc = { display: '0', prev: null, operator: null, waitingForOperand: false };
+  }
+
+  function calcCompute(a, b, op) {
+    if (op === '+') return a + b;
+    if (op === '-') return a - b;
+    if (op === '*') return a * b;
+    if (op === '/') return b === 0 ? NaN : a / b;
+    return b;
+  }
+
+  function calcPerformOperation(nextOperator) {
+    var value = parseFloat(calc.display);
+    if (calc.prev === null) {
+      calc.prev = value;
+    } else if (calc.operator) {
+      var result = calcCompute(calc.prev, value, calc.operator);
+      calc.display = Number.isNaN(result) ? '오류' : String(Math.round(result * 1e8) / 1e8);
+      calc.prev = Number.isNaN(result) ? null : result;
+    }
+    calc.waitingForOperand = true;
+    calc.operator = nextOperator === '=' ? null : nextOperator;
+  }
+
+  document.querySelectorAll('.calc-key').forEach(function (btn) {
+    btn.addEventListener('click', function () {
+      var k = btn.getAttribute('data-key');
+      if (k === 'C') calcClear();
+      else if (k === 'back') calcBackspace();
+      else if (k === '.') calcInputDot();
+      else if (k === '+' || k === '-' || k === '*' || k === '/' || k === '=') calcPerformOperation(k);
+      else calcInputDigit(k);
+      calcRender();
+    });
   });
 
   function diffHtml(label, diff) {

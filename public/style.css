@@ -300,3 +300,19 @@ table.admin-table th { color: var(--text-muted); font-weight: 600; font-size: 12
 .cash-count-qty { padding: 8px; font-size: 15px; border-radius: 8px; border: 1px solid var(--border); background: var(--surface); color: var(--text); text-align: center; }
 .cash-count-subtotal { width: 72px; text-align: right; font-size: 13px; color: var(--text-muted); }
 .cash-count-amount { width: 110px; padding: 8px; font-size: 15px; border-radius: 8px; border: 1px solid var(--border); background: var(--surface); color: var(--text); text-align: right; }
+
+/* ---------- Plain arithmetic calculator (admin cash-count tab) ---------- */
+.calc-display {
+  font-size: 28px; font-weight: 700; text-align: right; padding: 14px 12px; margin-bottom: 10px;
+  background: var(--surface-2); border-radius: 10px; border: 1px solid var(--border);
+  overflow-x: auto; white-space: nowrap;
+}
+.calc-grid { display: grid; grid-template-columns: repeat(4, 1fr); gap: 8px; }
+.calc-key {
+  padding: 16px 0; font-size: 18px; font-weight: 600; border-radius: 10px; border: 1px solid var(--border);
+  background: var(--surface-2); color: var(--text); cursor: pointer; -webkit-tap-highlight-color: transparent;
+}
+.calc-key:active { opacity: .7; }
+.calc-key.op { background: var(--surface); color: var(--accent); font-weight: 700; }
+.calc-key.eq { background: var(--accent); color: var(--accent-contrast); }
+.calc-key.clear { color: var(--danger); }
