@@ -485,9 +485,13 @@
 
   // ---------- 복사용 주간 리포트 ----------
   async function buildReport(record) {
-    var since = record.since; // null, or the previous settlement's date (exclusive)
+    var since = record.since; // display label only — null, or the previous settlement's date
     var to = record.date;
-    var qs = (since ? ('from=' + encodeURIComponent(since) + '&') : '') + 'to=' + encodeURIComponent(to);
+    // Use the settlement's own exact timestamp bounds (sinceAt/uptoAt), not
+    // the calendar-date strings — those can match the same day (e.g. 정산
+    // 기준일을 연달아 같은 날로 설정한 경우) and silently return nothing.
+    var qs = (record.sinceAt ? ('sinceAt=' + encodeURIComponent(record.sinceAt) + '&') : '') +
+      'uptoAt=' + encodeURIComponent(record.uptoAt || (to + 'T23:59:59.999Z'));
     var expenses = await api('/api/admin/expenses?' + qs);
     var ordersInRange = await api('/api/admin/orders?' + qs);
     var summary = await api('/api/admin/summary');
@@ -502,7 +506,11 @@
     });
     var itemNames = Object.keys(itemCounts).sort(function (a, b) { return itemCounts[b].qty - itemCounts[a].qty; });
     var totalCups = itemNames.reduce(function (s, n) { return s + itemCounts[n].qty; }, 0);
-    var daysInRange = summary.filter(function (d) { return (!since || d.date > since) && d.date <= to; });
+    // Calendar-day field on each daily summary row — same(-day) caveat as
+    // before doesn't apply the same way here since it's informational only,
+    // but guard the since===to edge case anyway so it doesn't silently drop
+    // a single-day settlement's own free-item total.
+    var daysInRange = summary.filter(function (d) { return (!since || d.date > since || d.date === to) && d.date <= to; });
     var freeTotal = daysInRange.reduce(function (s, d) { return s + (d.free || 0); }, 0);
 
     var byCat = {};
@@ -538,7 +546,11 @@
     lines.push('손익: ' + fmt(profit));
     lines.push('');
     lines.push('[정산 확인 — 실사 결과]');
+    lines.push('예상 현금 = 이전 ' + fmt(record.prevCash) + ' + 매출 ' + fmt(record.recordedCash) +
+      ' - 현금 지출 ' + fmt(record.recordedCashExpense || 0) + ' = ' + fmt(record.expectedCash));
     lines.push('실제 현금: ' + fmt(record.actualCash) + (Math.abs(record.diffCash) < 0.01 ? ' (일치 ✓)' : (' (차이 ' + fmt(record.diffCash) + ')')));
+    lines.push('예상 터치앤고 = 이전 ' + fmt(record.prevTng) + ' + 매출 ' + fmt(record.recordedTng) +
+      ' - 터치앤고 지출 ' + fmt(record.recordedTngExpense || 0) + ' = ' + fmt(record.expectedTng));
     lines.push('실제 터치앤고: ' + fmt(record.actualTng) + (Math.abs(record.diffTng) < 0.01 ? ' (일치 ✓)' : (' (차이 ' + fmt(record.diffTng) + ')')));
     if (typeof record.actualBank === 'number') lines.push('은행 잔액: ' + fmt(record.actualBank));
 
@@ -918,23 +930,88 @@
   }
   document.getElementById('ordersDate').addEventListener('change', loadOrders);
 
-  // ---------- Expenses ----------
+  // ---------- Expenses (with inline edit for 분류/결제/금액/메모) ----------
+  var EXPENSE_CATEGORIES = ['원재료', '운영비', '기타'];
+  var EXPENSE_PAYMENTS = ['현금', '카드', '터치앤고'];
+
+  function expenseRowHtml(e) {
+    return '<tr data-id="' + e.id + '">' +
+      '<td>' + e.date + '</td><td>' + e.category + '</td><td>' + (e.payment || '-') + '</td>' +
+      '<td>' + fmt(e.amount) + '</td><td>' + (e.memo || '-') + '</td><td>' + (e.author || '-') + '</td>' +
+      '<td class="row-actions">' +
+        '<button class="btn-small" data-edit="' + e.id + '">수정</button>' +
+        '<button class="btn-small btn-danger" data-del="' + e.id + '">삭제</button>' +
+      '</td></tr>';
+  }
+
+  function expenseEditRowHtml(e) {
+    return '<tr data-id="' + e.id + '">' +
+      '<td>' + e.date + '</td>' +
+      '<td><select data-f="category">' + EXPENSE_CATEGORIES.map(function (c) {
+        return '<option value="' + c + '"' + (e.category === c ? ' selected' : '') + '>' + c + '</option>';
+      }).join('') + '</select></td>' +
+      '<td><select data-f="payment">' + EXPENSE_PAYMENTS.map(function (p) {
+        return '<option value="' + p + '"' + (e.payment === p ? ' selected' : '') + '>' + p + '</option>';
+      }).join('') + '</select></td>' +
+      '<td><input type="number" step="0.01" value="' + e.amount + '" data-f="amount" style="width:80px"></td>' +
+      '<td><input type="text" value="' + (e.memo || '').replace(/"/g, '&quot;') + '" data-f="memo" style="width:100px"></td>' +
+      '<td>' + (e.author || '-') + '</td>' +
+      '<td class="row-actions">' +
+        '<button class="btn-small inline-save" data-save="' + e.id + '">저장</button>' +
+        '<button class="btn-small" data-cancel="' + e.id + '">취소</button>' +
+      '</td></tr>';
+  }
+
+  function bindExpenseRowEvents() {
+    document.querySelectorAll('#expensesRows button[data-edit]').forEach(function (b) {
+      b.addEventListener('click', function () {
+        var id = b.getAttribute('data-edit');
+        var e = lastExpenses.find(function (x) { return x.id === id; });
+        document.querySelector('#expensesRows tr[data-id="' + id + '"]').outerHTML = expenseEditRowHtml(e);
+        bindExpenseRowEvents();
+      });
+    });
+    document.querySelectorAll('#expensesRows button[data-cancel]').forEach(function (b) {
+      b.addEventListener('click', function () {
+        var id = b.getAttribute('data-cancel');
+        var e = lastExpenses.find(function (x) { return x.id === id; });
+        document.querySelector('#expensesRows tr[data-id="' + id + '"]').outerHTML = expenseRowHtml(e);
+        bindExpenseRowEvents();
+      });
+    });
+    document.querySelectorAll('#expensesRows button[data-save]').forEach(function (b) {
+      b.addEventListener('click', async function () {
+        var id = b.getAttribute('data-save');
+        var tr = document.querySelector('#expensesRows tr[data-id="' + id + '"]');
+        var category = tr.querySelector('[data-f="category"]').value;
+        var payment = tr.querySelector('[data-f="payment"]').value;
+        var amount = parseFloat(tr.querySelector('[data-f="amount"]').value);
+        var memo = tr.querySelector('[data-f="memo"]').value;
+        if (Number.isNaN(amount) || amount <= 0) return alert('금액을 올바르게 입력해주세요');
+        await fetch('/api/admin/expenses/' + id, {
+          method: 'PUT',
+          headers: { 'Content-Type': 'application/json' },
+          body: JSON.stringify({ category: category, payment: payment, amount: amount, memo: memo })
+        });
+        loadExpenses(); loadSummary();
+      });
+    });
+    document.querySelectorAll('#expensesRows button[data-del]').forEach(function (b) {
+      b.addEventListener('click', async function () {
+        if (!confirm('이 내역을 삭제할까요?')) return;
+        await fetch('/api/admin/expenses/' + b.getAttribute('data-del'), { method: 'DELETE' });
+        loadExpenses(); loadSummary();
+      });
+    });
+  }
+
   async function loadExpenses() {
     var dateVal = document.getElementById('expensesDate').value;
     var qs = dateVal ? ('?date=' + dateVal) : '';
     var expenses = await api('/api/admin/expenses' + qs);
     lastExpenses = expenses;
-    document.getElementById('expensesRows').innerHTML = expenses.map(function (e) {
-      return '<tr><td>' + e.date + '</td><td>' + e.category + '</td><td>' + (e.payment || '-') + '</td><td>' + fmt(e.amount) + '</td><td>' + (e.memo || '-') + '</td><td>' + (e.author || '-') + '</td>' +
-        '<td><button class="btn-small btn-danger" data-id="' + e.id + '">삭제</button></td></tr>';
-    }).join('') || '<tr><td colspan="7">내역 없음</td></tr>';
-    document.querySelectorAll('#expensesRows button').forEach(function (b) {
-      b.addEventListener('click', async function () {
-        if (!confirm('이 내역을 삭제할까요?')) return;
-        await fetch('/api/admin/expenses/' + b.getAttribute('data-id'), { method: 'DELETE' });
-        loadExpenses(); loadSummary();
-      });
-    });
+    document.getElementById('expensesRows').innerHTML = expenses.map(expenseRowHtml).join('') || '<tr><td colspan="7">내역 없음</td></tr>';
+    bindExpenseRowEvents();
   }
   document.getElementById('expensesDate').addEventListener('change', loadExpenses);
 

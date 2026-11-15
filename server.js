@@ -291,10 +291,16 @@ app.delete('/api/admin/menu/:id', (req, res) => {
 app.get('/api/admin/orders', (req, res) => {
   let orders = db.getOrders();
   if (req.query.date) orders = orders.filter((o) => myDateStr(new Date(o.createdAt)) === req.query.date);
-  // Range filter used by the weekly settlement report: from is exclusive
-  // (matches a settlement's "since"), to is inclusive.
+  // Calendar-day range filter (from exclusive, to inclusive) — used by the
+  // orders tab's own date picker.
   if (req.query.from) orders = orders.filter((o) => myDateStr(new Date(o.createdAt)) > req.query.from);
   if (req.query.to) orders = orders.filter((o) => myDateStr(new Date(o.createdAt)) <= req.query.to);
+  // Exact-timestamp range (sinceAt exclusive, uptoAt inclusive) — used by the
+  // weekly report so it matches a settlement's own cutoffs exactly, instead
+  // of the calendar-day filter above, which breaks when a settlement's
+  // "since" and "to" fall on the same day (yields an always-empty range).
+  if (req.query.sinceAt) orders = orders.filter((o) => o.createdAt > req.query.sinceAt);
+  if (req.query.uptoAt) orders = orders.filter((o) => o.createdAt <= req.query.uptoAt);
   orders.sort((a, b) => b.createdAt.localeCompare(a.createdAt));
   res.json(orders);
 });
@@ -327,10 +333,15 @@ app.put('/api/admin/orders/:id', (req, res) => {
 app.get('/api/admin/expenses', (req, res) => {
   let expenses = db.getExpenses();
   if (req.query.date) expenses = expenses.filter((e) => e.date === req.query.date);
-  // Range filter used by the weekly settlement report: from is exclusive
-  // (matches a settlement's "since"), to is inclusive.
+  // Calendar-day range filter (from exclusive, to inclusive) — used by the
+  // expenses tab's own date picker.
   if (req.query.from) expenses = expenses.filter((e) => e.date > req.query.from);
   if (req.query.to) expenses = expenses.filter((e) => e.date <= req.query.to);
+  // Exact-timestamp range (sinceAt exclusive, uptoAt inclusive) — used by the
+  // weekly report so it matches a settlement's own cutoffs exactly. See the
+  // matching comment on /api/admin/orders.
+  if (req.query.sinceAt) expenses = expenses.filter((e) => e.createdAt > req.query.sinceAt);
+  if (req.query.uptoAt) expenses = expenses.filter((e) => e.createdAt <= req.query.uptoAt);
   expenses.sort((a, b) => b.createdAt.localeCompare(a.createdAt));
   res.json(expenses);
 });
@@ -339,6 +350,27 @@ app.delete('/api/admin/expenses/:id', (req, res) => {
   const expenses = db.getExpenses().filter((e) => e.id !== req.params.id);
   db.saveExpenses(expenses);
   res.json({ ok: true });
+});
+
+// Fix a mistyped expense (wrong category/amount/payment/memo) without
+// deleting and re-entering it.
+app.put('/api/admin/expenses/:id', (req, res) => {
+  const { category, amount, payment, memo } = req.body || {};
+  if (!category || typeof amount !== 'number' || Number.isNaN(amount) || amount <= 0) {
+    return res.status(400).json({ error: 'category and a positive amount are required' });
+  }
+  if (!EXPENSE_PAYMENT_METHODS.includes(payment)) {
+    return res.status(400).json({ error: `payment must be one of ${EXPENSE_PAYMENT_METHODS.join('|')}` });
+  }
+  const expenses = db.getExpenses();
+  const idx = expenses.findIndex((e) => e.id === req.params.id);
+  if (idx === -1) return res.status(404).json({ error: 'not found' });
+  expenses[idx].category = category;
+  expenses[idx].amount = amount;
+  expenses[idx].payment = payment;
+  expenses[idx].memo = memo || '';
+  db.saveExpenses(expenses);
+  res.json(expenses[idx]);
 });
 
 // Daily rollup: revenue (split by payment method), cost, profit.
@@ -388,6 +420,22 @@ function recordedTotalsSince(sinceAt, beforeOrAt) {
   return { cash, tng };
 }
 
+// Same window, but for money that left the drawer/wallet to pay for
+// purchases — cash or TnG spent on 원재료/운영비/기타 reduces what should
+// be on hand, so settlement needs to subtract this, not just add sales.
+// 카드 (card) expenses don't touch cash/TnG on hand, so they're excluded.
+function recordedExpensesSince(sinceAt, beforeOrAt) {
+  const expenses = db.getExpenses();
+  let cash = 0, tng = 0;
+  expenses.forEach((e) => {
+    if (sinceAt && e.createdAt <= sinceAt) return;
+    if (beforeOrAt && e.createdAt > beforeOrAt) return;
+    if (e.payment === '현금') cash += e.amount;
+    else if (e.payment === '터치앤고') tng += e.amount;
+  });
+  return { cash, tng };
+}
+
 // Live preview: what's recorded since the last settlement, without settling.
 app.get('/api/admin/settlement-status', (req, res) => {
   const settings = db.getSettings();
@@ -396,13 +444,16 @@ app.get('/api/admin/settlement-status', (req, res) => {
   // happened by the time you sit down to count) aren't swept in early.
   const beforeOrAt = req.query.asOf ? endOfDayIso(req.query.asOf) : undefined;
   const recorded = recordedTotalsSince(settings.settlement.at, beforeOrAt);
+  const spent = recordedExpensesSince(settings.settlement.at, beforeOrAt);
   res.json({
     since: settings.settlement.date,
     lastActualCash: settings.settlement.actualCash,
     lastActualTng: settings.settlement.actualTng,
     lastActualBank: settings.settlement.actualBank || 0,
     recordedCash: recorded.cash,
-    recordedTng: recorded.tng
+    recordedTng: recorded.tng,
+    recordedCashExpense: spent.cash,
+    recordedTngExpense: spent.tng
   });
 });
 
@@ -452,12 +503,15 @@ app.post('/api/admin/settlement', (req, res) => {
   const beforeOrAt = endOfDayIso(settleDate);
   const settings = db.getSettings();
   const since = settings.settlement.date;
-  const recorded = recordedTotalsSince(settings.settlement.at, beforeOrAt);
+  const sinceAt = settings.settlement.at; // exact previous cutoff, for the report (see below)
+  const recorded = recordedTotalsSince(sinceAt, beforeOrAt);
+  const spent = recordedExpensesSince(sinceAt, beforeOrAt);
   // actualCash/actualTng are the full amount on hand right now ("최신 잔액"),
   // so what we expect them to be is last time's balance plus what came in
-  // since — not just the new sales on their own.
-  const expectedCash = (settings.settlement.actualCash || 0) + recorded.cash;
-  const expectedTng = (settings.settlement.actualTng || 0) + recorded.tng;
+  // since, minus what went back out to pay for 현금/터치앤고 purchases —
+  // not just the new sales on their own.
+  const expectedCash = (settings.settlement.actualCash || 0) + recorded.cash - spent.cash;
+  const expectedTng = (settings.settlement.actualTng || 0) + recorded.tng - spent.tng;
   const nowIso = new Date().toISOString();
   const bankValue = typeof actualBank === 'number' ? actualBank : (settings.settlement.actualBank || 0);
   const record = {
@@ -465,10 +519,18 @@ app.post('/api/admin/settlement', (req, res) => {
     createdAt: nowIso,
     date: settleDate,
     since,
+    // Exact ISO bounds this settlement counted between — kept so the
+    // weekly report's item/expense breakdown can use the identical window
+    // instead of re-deriving it from the (since, date) calendar-day strings,
+    // which go wrong whenever since and date fall on the same day.
+    sinceAt: sinceAt || null,
+    uptoAt: beforeOrAt,
     prevCash: settings.settlement.actualCash || 0,
     prevTng: settings.settlement.actualTng || 0,
     recordedCash: recorded.cash,
     recordedTng: recorded.tng,
+    recordedCashExpense: spent.cash,
+    recordedTngExpense: spent.tng,
     expectedCash,
     expectedTng,
     actualCash,
