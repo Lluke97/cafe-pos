@@ -314,18 +314,41 @@ app.delete('/api/admin/orders/:id', (req, res) => {
 // Fix a mistyped payment method or total on an existing order (e.g. the
 // cashier picked the wrong button). Items/device/time are left alone.
 app.put('/api/admin/orders/:id', (req, res) => {
-  const { pay, total } = req.body || {};
+  const { pay, total, items, device, createdAt } = req.body || {};
   if (pay !== '현금' && pay !== '터치앤고') {
     return res.status(400).json({ error: "pay must be '현금' or '터치앤고'" });
   }
   if (typeof total !== 'number' || Number.isNaN(total) || total <= 0) {
     return res.status(400).json({ error: 'total must be a positive number' });
   }
+  if (!Array.isArray(items) || items.length === 0) {
+    return res.status(400).json({ error: 'items must be a non-empty array' });
+  }
+  for (const it of items) {
+    if (!it || typeof it.name !== 'string' || !it.name.trim()) {
+      return res.status(400).json({ error: 'each item needs a name' });
+    }
+    if (typeof it.qty !== 'number' || Number.isNaN(it.qty) || it.qty <= 0) {
+      return res.status(400).json({ error: 'each item needs a positive qty' });
+    }
+    if (it.price !== undefined && (typeof it.price !== 'number' || Number.isNaN(it.price) || it.price < 0)) {
+      return res.status(400).json({ error: 'item price must be a non-negative number if given' });
+    }
+  }
+  let createdAtIso;
+  if (createdAt !== undefined) {
+    const d = new Date(createdAt);
+    if (Number.isNaN(d.getTime())) return res.status(400).json({ error: 'createdAt is not a valid date/time' });
+    createdAtIso = d.toISOString();
+  }
   const orders = db.getOrders();
   const idx = orders.findIndex((o) => o.id === req.params.id);
   if (idx === -1) return res.status(404).json({ error: 'not found' });
   orders[idx].pay = pay;
   orders[idx].total = total;
+  orders[idx].items = items.map((it) => ({ name: it.name.trim(), qty: it.qty, price: typeof it.price === 'number' ? it.price : 0 }));
+  orders[idx].device = device || null;
+  if (createdAtIso) orders[idx].createdAt = createdAtIso;
   db.saveOrders(orders);
   res.json(orders[idx]);
 });

@@ -845,9 +845,34 @@
     downloadCsv('구매지출내역_' + window.cafeTime.ymd(new Date()) + '.csv', rows);
   });
 
-  // ---------- Orders (with inline edit for 결제/합계) ----------
+  // ---------- Orders (full inline edit: 시간/내역/결제/기기/합계) ----------
   function orderDesc(o) {
     return o.items.map(function (i) { return i.name + ' x' + i.qty; }).join(', ');
+  }
+
+  // createdAt (UTC ISO) <-> MY_TZ (UTC+8, no DST) wall-clock for a
+  // datetime-local input, matching the server's MY_TZ convention elsewhere.
+  function toMyLocalInputValue(iso) {
+    var d = new Date(iso);
+    var my = new Date(d.getTime() + 8 * 3600 * 1000);
+    var pad = function (n) { return String(n).padStart(2, '0'); };
+    return my.getUTCFullYear() + '-' + pad(my.getUTCMonth() + 1) + '-' + pad(my.getUTCDate()) +
+      'T' + pad(my.getUTCHours()) + ':' + pad(my.getUTCMinutes()) + ':' + pad(my.getUTCSeconds());
+  }
+  function fromMyLocalInputValue(val) {
+    var m = val && val.match(/^(\d{4})-(\d{2})-(\d{2})T(\d{2}):(\d{2})(?::(\d{2}))?/);
+    if (!m) return null;
+    var utcMs = Date.UTC(+m[1], +m[2] - 1, +m[3], +m[4], +m[5], +(m[6] || 0)) - 8 * 3600 * 1000;
+    return new Date(utcMs).toISOString();
+  }
+
+  function itemEditRowHtml(it) {
+    return '<div class="item-edit-row">' +
+      '<input type="text" class="item-name" value="' + (it.name || '').replace(/"/g, '&quot;') + '" placeholder="이름">' +
+      '<span>x</span><input type="number" class="item-qty" value="' + (it.qty || 1) + '" min="1">' +
+      '<span>@</span><input type="number" class="item-price" value="' + (it.price || 0) + '" step="0.01">' +
+      '<button type="button" class="btn-small item-remove">✕</button>' +
+    '</div>';
   }
 
   function orderRowHtml(o) {
@@ -864,60 +889,21 @@
   }
 
   function orderEditRowHtml(o) {
-    return '<tr data-id="' + o.id + '">' +
-      '<td>' + window.cafeTime.hms(o.createdAt) + '</td>' +
-      '<td>' + orderDesc(o) + '</td>' +
+    return '<tr data-id="' + o.id + '" class="order-edit-row">' +
+      '<td><input type="datetime-local" step="1" class="order-edit-time" value="' + toMyLocalInputValue(o.createdAt) + '"></td>' +
+      '<td class="items-editor">' + o.items.map(itemEditRowHtml).join('') +
+        '<button type="button" class="btn-small item-add">+ 항목 추가</button></td>' +
       '<td><select data-f="pay">' +
         '<option value="현금"' + (o.pay === '현금' ? ' selected' : '') + '>현금</option>' +
         '<option value="터치앤고"' + (o.pay === '터치앤고' ? ' selected' : '') + '>터치앤고</option>' +
       '</select></td>' +
-      '<td>' + (o.device || '-') + '</td>' +
-      '<td><input type="number" step="0.01" value="' + o.total + '" data-f="total" style="width:80px"></td>' +
+      '<td><input type="text" class="order-edit-device" value="' + (o.device || '').replace(/"/g, '&quot;') + '" placeholder="기기"></td>' +
+      '<td><input type="number" step="0.01" class="order-edit-total" value="' + o.total + '" style="width:80px"><br>' +
+        '<button type="button" class="btn-small order-recalc-total">항목 합계로</button></td>' +
       '<td class="row-actions">' +
         '<button class="btn-small inline-save" data-save="' + o.id + '">저장</button>' +
         '<button class="btn-small" data-cancel="' + o.id + '">취소</button>' +
       '</td></tr>';
-  }
-
-  function bindOrderRowEvents() {
-    document.querySelectorAll('#ordersRows button[data-edit]').forEach(function (b) {
-      b.addEventListener('click', function () {
-        var id = b.getAttribute('data-edit');
-        var o = lastOrders.find(function (x) { return x.id === id; });
-        document.querySelector('#ordersRows tr[data-id="' + id + '"]').outerHTML = orderEditRowHtml(o);
-        bindOrderRowEvents();
-      });
-    });
-    document.querySelectorAll('#ordersRows button[data-cancel]').forEach(function (b) {
-      b.addEventListener('click', function () {
-        var id = b.getAttribute('data-cancel');
-        var o = lastOrders.find(function (x) { return x.id === id; });
-        document.querySelector('#ordersRows tr[data-id="' + id + '"]').outerHTML = orderRowHtml(o);
-        bindOrderRowEvents();
-      });
-    });
-    document.querySelectorAll('#ordersRows button[data-save]').forEach(function (b) {
-      b.addEventListener('click', async function () {
-        var id = b.getAttribute('data-save');
-        var tr = document.querySelector('#ordersRows tr[data-id="' + id + '"]');
-        var pay = tr.querySelector('[data-f="pay"]').value;
-        var total = parseFloat(tr.querySelector('[data-f="total"]').value);
-        if (Number.isNaN(total) || total <= 0) return alert('합계를 올바르게 입력해주세요');
-        await fetch('/api/admin/orders/' + id, {
-          method: 'PUT',
-          headers: { 'Content-Type': 'application/json' },
-          body: JSON.stringify({ pay: pay, total: total })
-        });
-        loadOrders(); loadSummary();
-      });
-    });
-    document.querySelectorAll('#ordersRows button[data-del]').forEach(function (b) {
-      b.addEventListener('click', async function () {
-        if (!confirm('이 주문을 삭제할까요?')) return;
-        await fetch('/api/admin/orders/' + b.getAttribute('data-del'), { method: 'DELETE' });
-        loadOrders(); loadSummary();
-      });
-    });
   }
 
   async function loadOrders() {
@@ -926,9 +912,76 @@
     var orders = await api('/api/admin/orders' + qs);
     lastOrders = orders;
     document.getElementById('ordersRows').innerHTML = orders.map(orderRowHtml).join('') || '<tr><td colspan="6">주문 없음</td></tr>';
-    bindOrderRowEvents();
   }
   document.getElementById('ordersDate').addEventListener('change', loadOrders);
+
+  // One delegated listener on the table body — rows get swapped in/out of
+  // edit mode via outerHTML, so re-binding per-button on every render would
+  // just be extra bookkeeping for the same result.
+  document.getElementById('ordersRows').addEventListener('click', async function (ev) {
+    var editBtn = ev.target.closest('button[data-edit]');
+    var cancelBtn = ev.target.closest('button[data-cancel]');
+    var saveBtn = ev.target.closest('button[data-save]');
+    var delBtn = ev.target.closest('button[data-del]');
+    var addBtn = ev.target.closest('.item-add');
+    var removeBtn = ev.target.closest('.item-remove');
+    var recalcBtn = ev.target.closest('.order-recalc-total');
+
+    if (editBtn) {
+      var id = editBtn.getAttribute('data-edit');
+      var o = lastOrders.find(function (x) { return x.id === id; });
+      document.querySelector('#ordersRows tr[data-id="' + id + '"]').outerHTML = orderEditRowHtml(o);
+    } else if (cancelBtn) {
+      var id2 = cancelBtn.getAttribute('data-cancel');
+      var o2 = lastOrders.find(function (x) { return x.id === id2; });
+      document.querySelector('#ordersRows tr[data-id="' + id2 + '"]').outerHTML = orderRowHtml(o2);
+    } else if (delBtn) {
+      if (!confirm('이 주문을 삭제할까요?')) return;
+      await fetch('/api/admin/orders/' + delBtn.getAttribute('data-del'), { method: 'DELETE' });
+      loadOrders(); loadSummary();
+    } else if (addBtn) {
+      addBtn.insertAdjacentHTML('beforebegin', itemEditRowHtml({ name: '', qty: 1, price: 0 }));
+    } else if (removeBtn) {
+      var editorDiv = removeBtn.closest('.items-editor');
+      if (editorDiv.querySelectorAll('.item-edit-row').length > 1) {
+        removeBtn.closest('.item-edit-row').remove();
+      } else {
+        alert('최소 1개 항목은 있어야 해요');
+      }
+    } else if (recalcBtn) {
+      var tr = recalcBtn.closest('tr');
+      var sum = 0;
+      tr.querySelectorAll('.item-edit-row').forEach(function (row) {
+        var qty = parseFloat(row.querySelector('.item-qty').value) || 0;
+        var price = parseFloat(row.querySelector('.item-price').value) || 0;
+        sum += qty * price;
+      });
+      tr.querySelector('.order-edit-total').value = sum.toFixed(2);
+    } else if (saveBtn) {
+      var id3 = saveBtn.getAttribute('data-save');
+      var tr3 = document.querySelector('#ordersRows tr[data-id="' + id3 + '"]');
+      var pay = tr3.querySelector('[data-f="pay"]').value;
+      var total = parseFloat(tr3.querySelector('.order-edit-total').value);
+      var device = tr3.querySelector('.order-edit-device').value.trim();
+      var createdAt = fromMyLocalInputValue(tr3.querySelector('.order-edit-time').value);
+      var items = [];
+      tr3.querySelectorAll('.item-edit-row').forEach(function (row) {
+        var name = row.querySelector('.item-name').value.trim();
+        var qty = parseFloat(row.querySelector('.item-qty').value);
+        var price = parseFloat(row.querySelector('.item-price').value);
+        if (name && qty > 0) items.push({ name: name, qty: qty, price: Number.isNaN(price) ? 0 : price });
+      });
+      if (items.length === 0) return alert('항목을 최소 1개 입력해주세요 (이름/수량 확인)');
+      if (Number.isNaN(total) || total <= 0) return alert('합계를 올바르게 입력해주세요');
+      if (!createdAt) return alert('시간을 올바르게 입력해주세요');
+      await fetch('/api/admin/orders/' + id3, {
+        method: 'PUT',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ pay: pay, total: total, device: device || null, createdAt: createdAt, items: items })
+      });
+      loadOrders(); loadSummary();
+    }
+  });
 
   // ---------- Expenses (with inline edit for 분류/결제/금액/메모) ----------
   var EXPENSE_CATEGORIES = ['원재료', '운영비', '기타'];

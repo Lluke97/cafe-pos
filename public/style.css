@@ -316,3 +316,13 @@ table.admin-table th { color: var(--text-muted); font-weight: 600; font-size: 12
 .calc-key.op { background: var(--surface); color: var(--accent); font-weight: 700; }
 .calc-key.eq { background: var(--accent); color: var(--accent-contrast); }
 .calc-key.clear { color: var(--danger); }
+
+/* Admin order/expense inline full-row edit */
+.row-actions { display: flex; gap: 6px; white-space: nowrap; }
+.items-editor { min-width: 220px; }
+.item-edit-row { display: flex; align-items: center; gap: 4px; margin-bottom: 4px; }
+.item-edit-row .item-name { width: 70px; }
+.item-edit-row .item-qty { width: 40px; }
+.item-edit-row .item-price { width: 55px; }
+.order-edit-time { width: 170px; }
+.order-edit-device { width: 90px; }
