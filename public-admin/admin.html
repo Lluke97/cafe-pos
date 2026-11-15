@@ -75,27 +75,29 @@
   <div class="settlement-card" id="settlementCard">
     <h2 style="margin:0 0 10px; font-size:15px; font-weight:700;">💰 정산 (현금 · 터치앤고 실사)</h2>
     <div id="settlementSinceNote" style="font-size:12px; color:var(--text-muted); margin-bottom:10px;"></div>
-    <div class="field" style="max-width:220px; margin-bottom:10px;">
-      <label>📅 매출일 (어느 날짜 매출까지 끌어올지 — 일요일 영업분을 월요일에 정산하면 일요일로)</label>
-      <input type="date" id="settlementAsOf">
-    </div>
     <div class="settlement-row">
       <div class="field" style="flex:1;">
-        <label>💵 이전 현금 잔액 (직접 수정 가능)</label>
+        <label>📅 매출 시작일 (이 날짜부터 포함)</label>
+        <input type="date" id="settlementFrom">
+      </div>
+      <div class="field" style="flex:1;">
+        <label>📅 정산일 (이 날짜까지 포함)</label>
+        <input type="date" id="settlementAsOf">
+      </div>
+    </div>
+    <div class="settlement-row" style="margin-top:8px;">
+      <div class="field" style="flex:1;">
+        <label>💵 이전 현금 잔액 (매출 시작일 전날 기준, 직접 수정 가능)</label>
         <input type="number" id="prevCash" step="0.01" placeholder="예: 300.00">
       </div>
       <div class="field" style="flex:1;">
-        <label>📱 이전 터치앤고 잔액 (직접 수정 가능)</label>
+        <label>📱 이전 터치앤고 잔액 (매출 시작일 전날 기준, 직접 수정 가능)</label>
         <input type="number" id="prevTng" step="0.01" placeholder="예: 400.00">
       </div>
       <div class="field" style="flex:1;">
         <label>🏦 이전 은행 잔액 (직접 수정 가능)</label>
         <input type="number" id="prevBank" step="0.01" placeholder="예: 15000.00">
       </div>
-    </div>
-    <div class="field" style="max-width:220px; margin-top:8px;">
-      <label>📅 이전 정산일 (지난번 정산이 언제자였는지 — 그다음 날부터 매칭)</label>
-      <input type="date" id="prevBaselineDate">
     </div>
     <button id="savePrevBtn" class="btn btn-secondary" style="width:100%; margin-top:8px;">이전 잔액 저장</button>
     <span id="savePrevDone" style="display:none; font-size:12px; color:var(--ok); margin-left:4px;">저장됐어요 ✓</span>
@@ -317,33 +319,31 @@
   }
 
   async function loadSettlementStatus() {
-    var asOf = document.getElementById('settlementAsOf').value;
-    // "이전 정산일" 입력칸의 현재 값을 그대로 서버에 보낸다 — 저장된 커서를
-    // 그냥 믿으면, 이 값을 고쳐도 미리보기가 안 바뀌는(그래서 계속 매출
-    // RM0.00으로 보이는) 문제가 생긴다. 이 칸을 바꾸면 바로 다시 계산되게.
-    var sinceInput = document.getElementById('prevBaselineDate').value;
+    // 간단한 로직: 매출 시작일(from)과 정산일(to) 둘 다 화면에서 직접
+    // 고르고, 그 사이(둘 다 포함)의 매출·지출을 그대로 더한다. 저장된
+    // 커서는 안 쓰므로, 두 날짜 칸을 바꾸면 바로 다시 계산된다.
+    var from = document.getElementById('settlementFrom').value;
+    var to = document.getElementById('settlementAsOf').value;
     var qs = [];
-    if (asOf) qs.push('asOf=' + encodeURIComponent(asOf));
-    if (sinceInput) qs.push('since=' + encodeURIComponent(sinceInput));
+    if (from) qs.push('from=' + encodeURIComponent(from));
+    if (to) qs.push('to=' + encodeURIComponent(to));
     var s = await api('/api/admin/settlement-status' + (qs.length ? ('?' + qs.join('&')) : ''));
     // "이전 잔액" = what was actually counted at the last settlement (or
     // whatever was last saved with "이전 잔액 저장").
     document.getElementById('prevCash').value = (s.lastActualCash || 0).toFixed(2);
     document.getElementById('prevTng').value = (s.lastActualTng || 0).toFixed(2);
     document.getElementById('prevBank').value = (s.lastActualBank || 0).toFixed(2);
-    // Only seed "이전 정산일" from the server the very first time (field
-    // still empty) — after that, the field itself drives the window, so
-    // don't stomp over whatever the admin just typed there.
-    if (!sinceInput) document.getElementById('prevBaselineDate').value = s.since || asOf;
+    // Only seed "매출 시작일" from the server's suggestion the very first
+    // time (field still empty) — after that, the field drives the window.
+    if (!from && s.from) document.getElementById('settlementFrom').value = s.from;
     var countNote = typeof s.orderCount === 'number' ? (' (주문 ' + s.orderCount + '건 반영)') : '';
     if (s.orderCount === 0) {
       document.getElementById('settlementSinceNote').innerHTML =
-        '<span style="color:var(--danger, #e06);">⚠ 이 기간에 주문이 0건이에요 — 이전 정산일(' + (s.since || '-') +
-        ')이 매출일(' + asOf + ')보다 늦거나 같으면 매출이 안 잡혀요. 이전 정산일을 더 앞으로 당겨보세요.</span>';
+        '<span style="color:var(--danger, #e06);">⚠ 이 기간에 주문이 0건이에요 — 매출 시작일(' + (from || '-') +
+        ')이 정산일(' + (to || '-') + ')보다 늦거나 같으면 매출이 안 잡혀요. 매출 시작일을 더 앞으로 당겨보세요.</span>';
     } else {
-      document.getElementById('settlementSinceNote').textContent = s.since
-        ? ('이전 정산일: ' + s.since + ' — 그다음 날부터 매출일 ' + asOf + '까지의 매출·지출로 비교해요' + countNote)
-        : '아직 정산한 적 없음 — 이전 잔액을 직접 입력하고 저장한 뒤, 최신 금액을 세어서 정산하기를 눌러주세요.';
+      document.getElementById('settlementSinceNote').textContent =
+        (from || '-') + ' ~ ' + (to || '-') + ' 사이의 매출·지출로 비교해요' + countNote;
     }
     // Prefill the "최신 잔액" inputs with the system's expected amount
     // (이전 잔액 + 그 이후 집계) so the owner only has to correct it if the
@@ -355,7 +355,7 @@
     updateIncreaseDisplay();
   }
 
-  (function initSettlementAsOf() {
+  (function initSettlementDates() {
     var el = document.getElementById('settlementAsOf');
     if (!el.value) {
       var now = new Date();
@@ -364,7 +364,7 @@
     }
     el.addEventListener('change', loadSettlementStatus);
   })();
-  document.getElementById('prevBaselineDate').addEventListener('change', loadSettlementStatus);
+  document.getElementById('settlementFrom').addEventListener('change', loadSettlementStatus);
 
   document.getElementById('prevCash').addEventListener('input', updateIncreaseDisplay);
   document.getElementById('prevTng').addEventListener('input', updateIncreaseDisplay);
@@ -380,8 +380,14 @@
     if (prevBank !== undefined && Number.isNaN(prevBank)) return alert('이전 은행 잔액을 숫자로 입력해주세요');
     var body = { actualCash: prevCash, actualTng: prevTng };
     if (prevBank !== undefined) body.actualBank = prevBank;
-    var baselineDate = document.getElementById('prevBaselineDate').value;
-    if (baselineDate) body.date = baselineDate;
+    // 매출 시작일 전날까지의 잔액이라는 뜻이므로, 다음 기본값 추천을 위해
+    // "매출 시작일 하루 전"을 기준일로 같이 저장해둔다 (계산에는 안 쓰임).
+    var fromVal = document.getElementById('settlementFrom').value;
+    if (fromVal) {
+      var d = new Date(fromVal + 'T00:00:00Z');
+      d.setUTCDate(d.getUTCDate() - 1);
+      body.date = d.toISOString().slice(0, 10);
+    }
     await fetch('/api/admin/settlement-baseline', {
       method: 'POST',
       headers: { 'Content-Type': 'application/json' },
@@ -612,12 +618,11 @@
     if (actualBank !== undefined && Number.isNaN(actualBank)) return alert('은행 잔액을 숫자로 입력해주세요');
     var body = { actualCash: actualCash, actualTng: actualTng };
     if (actualBank !== undefined) body.actualBank = actualBank;
-    var asOf = document.getElementById('settlementAsOf').value;
-    if (asOf) body.date = asOf;
-    // 미리보기에 쓴 것과 똑같은 "이전 정산일"을 그대로 넘겨서, 화면에 보인
-    // 매출/지출과 실제로 기록되는 값이 항상 일치하게 한다.
-    var sinceInput = document.getElementById('prevBaselineDate').value;
-    if (sinceInput) body.since = sinceInput;
+    // 미리보기에 쓴 것과 똑같은 매출 시작일/정산일을 그대로 넘겨서, 화면에
+    // 보인 매출·지출과 실제로 기록되는 값이 항상 일치하게 한다.
+    body.from = document.getElementById('settlementFrom').value;
+    body.to = document.getElementById('settlementAsOf').value;
+    if (!body.from || !body.to) return alert('매출 시작일과 정산일을 모두 선택해주세요');
     var res = await fetch('/api/admin/settlement', {
       method: 'POST',
       headers: { 'Content-Type': 'application/json' },

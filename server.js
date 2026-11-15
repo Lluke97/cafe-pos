@@ -131,6 +131,15 @@ function todayStr(d) {
   return myDateStr(dt);
 }
 
+// "2026-11-15" -> "2026-11-16" (MY_TZ calendar day), for suggesting a
+// default 매출 시작일 right after the last settled date.
+function nextDayStr(dateStr) {
+  const [y, m, d] = dateStr.split('-').map(Number);
+  const dt = new Date(Date.UTC(y, m - 1, d + 1));
+  const pad = (n) => String(n).padStart(2, '0');
+  return dt.getUTCFullYear() + '-' + pad(dt.getUTCMonth() + 1) + '-' + pad(dt.getUTCDate());
+}
+
 // End of a given MY_TZ calendar day (23:59:59.999 local), as a UTC ISO
 // string — used to cap a settlement to a specific business date (e.g.
 // settling on Monday for Sunday's sales) instead of always "right now".
@@ -139,6 +148,15 @@ function endOfDayIso(dateStr) {
   const [y, m, d] = dateStr.split('-').map(Number);
   const nextDayMidnightUtcMs = Date.UTC(y, m - 1, d + 1, 0, 0, 0, 0) - 8 * 3600 * 1000;
   return new Date(nextDayMidnightUtcMs - 1).toISOString();
+}
+
+// The instant just before a given MY_TZ calendar day starts — i.e. the end
+// of the previous day. Used to turn an inclusive "매출 시작일" into the
+// exclusive lower bound recordedTotalsSince expects.
+function justBeforeDayIso(dateStr) {
+  const [y, m, d] = dateStr.split('-').map(Number);
+  const startOfDayUtcMs = Date.UTC(y, m - 1, d, 0, 0, 0, 0) - 8 * 3600 * 1000;
+  return new Date(startOfDayUtcMs - 1).toISOString();
 }
 
 // ---------------- Public pages ----------------
@@ -463,21 +481,21 @@ function recordedExpensesSince(sinceAt, beforeOrAt) {
 // Live preview: what's recorded since the last settlement, without settling.
 app.get('/api/admin/settlement-status', (req, res) => {
   const settings = db.getSettings();
-  // ?since=YYYY-MM-DD lets the admin screen override "이전 정산일" live —
-  // the UI always sends whatever that input currently shows, so changing it
-  // immediately recomputes the preview instead of staying stuck on whatever
-  // was last saved on the server (the exact bug this was built to avoid).
-  // Falls back to the saved cursor only if the client doesn't pass one.
-  const sinceDate = req.query.since || settings.settlement.date;
-  const sinceAt = sinceDate ? endOfDayIso(sinceDate) : null;
-  // ?asOf=YYYY-MM-DD caps the recorded total to that business date — for
-  // settling on Monday for Sunday's sales, so Monday's own orders (already
-  // happened by the time you sit down to count) aren't swept in early.
-  const beforeOrAt = req.query.asOf ? endOfDayIso(req.query.asOf) : undefined;
+  // Simple, explicit date range — no hidden cursor. 매출 시작일(from)과
+  // 정산일(to)을 직접 받아서, 그 사이(둘 다 포함)의 매출·지출을 그대로
+  // 더한다. from이 없으면 마지막 정산일의 다음날을 기본값으로 쓴다(편의상
+  // 추천값일 뿐 — 클라이언트가 보낸 from/to가 있으면 항상 그걸 우선한다).
+  const defaultFrom = settings.settlement.date ? nextDayStr(settings.settlement.date) : null;
+  const from = req.query.from || defaultFrom;
+  const to = req.query.to || null;
+  const sinceAt = from ? justBeforeDayIso(from) : null;
+  const beforeOrAt = to ? endOfDayIso(to) : undefined;
   const recorded = recordedTotalsSince(sinceAt, beforeOrAt);
   const spent = recordedExpensesSince(sinceAt, beforeOrAt);
   res.json({
-    since: sinceDate || null,
+    from: from || null,
+    to: to || null,
+    since: settings.settlement.date || null, // last settled date, for reference only
     lastActualCash: settings.settlement.actualCash,
     lastActualTng: settings.settlement.actualTng,
     lastActualBank: settings.settlement.actualBank || 0,
@@ -526,28 +544,26 @@ app.post('/api/admin/settlement-baseline', (req, res) => {
 // actualBank (은행 잔액) is optional and not reconciled against anything —
 // it's just carried through to the youth-budget webhook below.
 app.post('/api/admin/settlement', (req, res) => {
-  const { actualCash, actualTng, actualBank, date, since: sinceOverride } = req.body || {};
+  const { actualCash, actualTng, actualBank, from, to } = req.body || {};
   if (typeof actualCash !== 'number' || typeof actualTng !== 'number' || Number.isNaN(actualCash) || Number.isNaN(actualTng)) {
     return res.status(400).json({ error: 'actualCash and actualTng must both be numbers' });
   }
   if (actualBank !== undefined && (typeof actualBank !== 'number' || Number.isNaN(actualBank))) {
     return res.status(400).json({ error: 'actualBank must be a number if provided' });
   }
-  // date = the business day being settled (e.g. still Sunday's business when
-  // settling on Monday morning) — defaults to today when not given. Orders
-  // after that day's end are left for the next settlement, not counted here.
-  const settleDate = date || todayStr();
-  const beforeOrAt = endOfDayIso(settleDate);
+  if (!from || !to) {
+    return res.status(400).json({ error: 'from and to (both YYYY-MM-DD) are required' });
+  }
+  // 간단한 로직: 매출 시작일(from)과 정산일(to)을 그대로 받아서 그 사이
+  // (둘 다 포함)의 매출·지출만 더한다. 저장된 커서는 전혀 쓰지 않으므로,
+  // 화면에 보이는 두 날짜와 실제로 계산되는 범위가 항상 똑같다.
+  const settleDate = to;
+  const beforeOrAt = endOfDayIso(to);
+  const sinceAt = justBeforeDayIso(from);
   const settings = db.getSettings();
-  // "이전 정산일"은 화면에 보이는 입력칸 값을 그대로 받는다 — 저장된 커서를
-  // 그냥 믿으면, 그 커서가 어긋나 있을 때 매출이 계속 0으로 잡히는 문제가
-  // 생긴다 (이전에 실제로 있었던 버그). 화면과 실제 계산이 항상 같은 값을
-  // 쓰도록, 미리보기(settlement-status)에 쓴 것과 동일한 since를 넘겨받는다.
-  const since = sinceOverride || settings.settlement.date;
-  const sinceAt = since ? endOfDayIso(since) : null;
-  if (sinceAt && sinceAt >= beforeOrAt) {
+  if (sinceAt >= beforeOrAt) {
     return res.status(400).json({
-      error: '이전 정산일(' + since + ')이 매출일(' + settleDate + ')보다 같거나 늦어요 — 매출을 하나도 못 끌어와요. 매출일을 이전 정산일보다 뒤로 선택해주세요.'
+      error: '매출 시작일(' + from + ')이 정산일(' + to + ')보다 늦어요 — 시작일을 정산일보다 앞으로 선택해주세요.'
     });
   }
   const recorded = recordedTotalsSince(sinceAt, beforeOrAt);
@@ -564,7 +580,7 @@ app.post('/api/admin/settlement', (req, res) => {
     id: uid(),
     createdAt: nowIso,
     date: settleDate,
-    since,
+    since: from,
     // Exact ISO bounds this settlement counted between — kept so the
     // weekly report's item/expense breakdown can use the identical window
     // instead of re-deriving it from the (since, date) calendar-day strings,
