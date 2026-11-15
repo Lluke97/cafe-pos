@@ -487,7 +487,7 @@ app.get('/api/admin/settlement-status', (req, res) => {
 // `at`/`date` to now so recordedTotalsSince starts counting from this point;
 // otherwise the existing since-timestamp is left alone.
 app.post('/api/admin/settlement-baseline', (req, res) => {
-  const { actualCash, actualTng, actualBank } = req.body || {};
+  const { actualCash, actualTng, actualBank, date } = req.body || {};
   if (typeof actualCash !== 'number' || typeof actualTng !== 'number' || Number.isNaN(actualCash) || Number.isNaN(actualTng)) {
     return res.status(400).json({ error: 'actualCash and actualTng must both be numbers' });
   }
@@ -496,10 +496,15 @@ app.post('/api/admin/settlement-baseline', (req, res) => {
   }
   const settings = db.getSettings();
   const bankValue = typeof actualBank === 'number' ? actualBank : (settings.settlement.actualBank || 0);
-  const isFirstEver = !settings.settlement.at;
+  // "이전 잔액"은 반드시 어느 영업일 기준인지(date)와 같이 다녀야 그 다음부터
+  // 들어온 매출/지출을 정확히 매칭해서 끌어올 수 있다. 이전에는 처음 한 번만
+  // date를 정했고 그 뒤로는 고칠 방법이 없어서, 이전 잔액 금액을 고쳐도
+  // 날짜가 안 맞으면 판매일-정산기준일 매칭이 어긋났다. 이제 저장할 때마다
+  // date를 받아 같이 갱신한다 (안 주면 기존 날짜 유지, 처음이면 오늘).
+  const settleDate = date || settings.settlement.date || todayStr();
   settings.settlement = {
-    at: isFirstEver ? new Date().toISOString() : settings.settlement.at,
-    date: isFirstEver ? todayStr() : settings.settlement.date,
+    at: endOfDayIso(settleDate),
+    date: settleDate,
     actualCash, actualTng, actualBank: bankValue
   };
   db.saveSettings(settings);

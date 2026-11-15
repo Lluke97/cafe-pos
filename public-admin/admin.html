@@ -93,6 +93,10 @@
         <input type="number" id="prevBank" step="0.01" placeholder="예: 15000.00">
       </div>
     </div>
+    <div class="field" style="max-width:220px; margin-top:8px;">
+      <label>📅 이 이전 잔액의 기준일 (이후 매출·지출을 여기부터 매칭)</label>
+      <input type="date" id="prevBaselineDate">
+    </div>
     <button id="savePrevBtn" class="btn btn-secondary" style="width:100%; margin-top:8px;">이전 잔액 저장</button>
     <span id="savePrevDone" style="display:none; font-size:12px; color:var(--ok); margin-left:4px;">저장됐어요 ✓</span>
     <div class="settlement-row" style="margin-top:12px;">
@@ -320,6 +324,7 @@
     document.getElementById('prevCash').value = (s.lastActualCash || 0).toFixed(2);
     document.getElementById('prevTng').value = (s.lastActualTng || 0).toFixed(2);
     document.getElementById('prevBank').value = (s.lastActualBank || 0).toFixed(2);
+    document.getElementById('prevBaselineDate').value = s.since || asOf;
     document.getElementById('settlementSinceNote').textContent = s.since
       ? ('마지막 정산: ' + s.since + ' — 그 이후 들어온 주문 기준으로 비교해요 (정산 기준일: ' + asOf + '까지)')
       : '아직 정산한 적 없음 — 이전 잔액을 직접 입력하고 저장한 뒤, 최신 금액을 세어서 정산하기를 눌러주세요.';
@@ -357,6 +362,8 @@
     if (prevBank !== undefined && Number.isNaN(prevBank)) return alert('이전 은행 잔액을 숫자로 입력해주세요');
     var body = { actualCash: prevCash, actualTng: prevTng };
     if (prevBank !== undefined) body.actualBank = prevBank;
+    var baselineDate = document.getElementById('prevBaselineDate').value;
+    if (baselineDate) body.date = baselineDate;
     await fetch('/api/admin/settlement-baseline', {
       method: 'POST',
       headers: { 'Content-Type': 'application/json' },
