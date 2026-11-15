@@ -93,7 +93,10 @@
     <div class="settlement-row" style="margin-top:12px;">
       <div class="field" style="flex:1;">
         <label>💵 최신 현금 잔액 (세어본 금액)</label>
-        <input type="number" id="actualCash" step="0.01" placeholder="예: 350.00">
+        <div style="display:flex; gap:6px;">
+          <input type="number" id="actualCash" step="0.01" placeholder="예: 350.00" style="flex:1;">
+          <button type="button" id="cashCountBtn" class="btn btn-secondary" style="white-space:nowrap;">🧮 계산기</button>
+        </div>
       </div>
       <div class="field" style="flex:1;">
         <label>📱 최신 터치앤고 잔액 (앱/명세 확인)</label>
@@ -203,6 +206,26 @@
   </div>
 </section>
 
+<div class="cash-modal-backdrop" id="cashCountBackdrop" hidden>
+  <div class="cash-modal">
+    <h3>🧮 현금 세기</h3>
+    <div class="cash-count-rows" id="cashCountRows"></div>
+    <div class="cash-row" style="margin-top:4px;">
+      <span class="label">🪙 동전 (합계)</span>
+      <input type="number" id="cashCountCoins" class="cash-count-amount" step="0.01" placeholder="0.00">
+    </div>
+    <div class="cash-row">
+      <span class="label">➕ 기타</span>
+      <input type="number" id="cashCountOther" class="cash-count-amount" step="0.01" placeholder="0.00">
+    </div>
+    <div class="cash-row change" style="margin-top:10px;"><span class="label">합계</span><span class="value ok" id="cashCountTotal">RM0.00</span></div>
+    <div class="cash-modal-actions">
+      <button class="reset" id="cashCountResetBtn">초기화</button>
+      <button class="confirm" id="cashCountApplyBtn">적용</button>
+    </div>
+  </div>
+</div>
+
 <script>
   function fmt(n) {
     return 'RM' + Number(n).toLocaleString('en-MY', { minimumFractionDigits: 2, maximumFractionDigits: 2 });
@@ -303,6 +326,68 @@
     done.style.display = 'inline';
     setTimeout(function () { done.style.display = 'none'; }, 2000);
     loadSettlementStatus();
+  });
+
+  // ---------- 현금 세기 계산기 (지폐 개수 → 자동 합계 → 최신 현금 잔액에 적용) ----------
+  var CASH_COUNT_DENOMS = [100, 50, 20, 10, 5, 1]; // MYR banknotes
+
+  function renderCashCountRows() {
+    var wrap = document.getElementById('cashCountRows');
+    wrap.innerHTML = '';
+    CASH_COUNT_DENOMS.forEach(function (v) {
+      var row = document.createElement('div');
+      row.className = 'cash-row cash-count-row';
+      row.innerHTML = '<span class="label">RM' + v + ' × </span>' +
+        '<input type="number" class="cash-count-qty" data-denom="' + v + '" min="0" step="1" placeholder="0" style="width:64px;">' +
+        '<span class="cash-count-subtotal" data-sub="' + v + '">RM0.00</span>';
+      wrap.appendChild(row);
+      row.querySelector('.cash-count-qty').addEventListener('input', updateCashCountTotal);
+    });
+  }
+
+  function updateCashCountTotal() {
+    var total = 0;
+    document.querySelectorAll('.cash-count-qty').forEach(function (input) {
+      var denom = parseFloat(input.dataset.denom);
+      var qty = parseFloat(input.value);
+      qty = Number.isNaN(qty) || qty < 0 ? 0 : qty;
+      var subtotal = denom * qty;
+      total += subtotal;
+      document.querySelector('[data-sub="' + denom + '"]').textContent = fmt(subtotal);
+    });
+    var coins = parseFloat(document.getElementById('cashCountCoins').value);
+    var other = parseFloat(document.getElementById('cashCountOther').value);
+    total += Number.isNaN(coins) ? 0 : coins;
+    total += Number.isNaN(other) ? 0 : other;
+    document.getElementById('cashCountTotal').textContent = fmt(total);
+    return total;
+  }
+
+  function openCashCountModal() {
+    renderCashCountRows();
+    document.getElementById('cashCountCoins').value = '';
+    document.getElementById('cashCountOther').value = '';
+    updateCashCountTotal();
+    document.getElementById('cashCountBackdrop').hidden = false;
+  }
+
+  document.getElementById('cashCountBtn').addEventListener('click', openCashCountModal);
+  document.getElementById('cashCountCoins').addEventListener('input', updateCashCountTotal);
+  document.getElementById('cashCountOther').addEventListener('input', updateCashCountTotal);
+  document.getElementById('cashCountResetBtn').addEventListener('click', function () {
+    document.querySelectorAll('.cash-count-qty').forEach(function (input) { input.value = ''; });
+    document.getElementById('cashCountCoins').value = '';
+    document.getElementById('cashCountOther').value = '';
+    updateCashCountTotal();
+  });
+  document.getElementById('cashCountApplyBtn').addEventListener('click', function () {
+    var total = updateCashCountTotal();
+    document.getElementById('actualCash').value = total.toFixed(2);
+    updateIncreaseDisplay();
+    document.getElementById('cashCountBackdrop').hidden = true;
+  });
+  document.getElementById('cashCountBackdrop').addEventListener('click', function (e) {
+    if (e.target === e.currentTarget) document.getElementById('cashCountBackdrop').hidden = true;
   });
 
   function diffHtml(label, diff) {
