@@ -17,10 +17,15 @@ function notifyYouthBudget(record) {
     }
     try {
       const target = new URL('/api/webhook/cafe-settlement', url);
+      // 현금/은행은 카페가 센 절대 금액을 그대로 보내지만, 터치앤고는 카페
+      // 지갑 잔액(actualTng)을 그대로 보내면 안 된다 — 카페 지갑과 파이낸스가
+      // 보는 터치앤고는 같은 숫자가 아니라서, 이번 정산으로 "얼마나 늘었는지"
+      // (increase)만 보내고 파이낸스 쪽에서 자기 터치앤고 잔액에 더하게 한다.
+      const tngIncrease = record.actualTng - (record.prevTng || 0);
       const payload = JSON.stringify({
         date: record.date,
         cash: record.actualCash,
-        tng: record.actualTng,
+        tngIncrease,
         bank: typeof record.actualBank === 'number' ? record.actualBank : null,
         memo: '카페 정산 전송'
       });
