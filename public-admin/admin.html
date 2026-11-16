@@ -682,7 +682,10 @@
       '<td>' + r.date + '</td>' +
       '<td class="' + (Math.abs(r.diffCash) < 0.01 ? 'diff-ok' : 'diff-off') + '">' + fmt(r.diffCash) + '</td>' +
       '<td class="' + (Math.abs(r.diffTng) < 0.01 ? 'diff-ok' : 'diff-off') + '">' + fmt(r.diffTng) + '</td>' +
-      '<td>' + (r.sentToFinance ? '<span style="color:var(--ok);font-size:12px;">✓ 전송됨</span>' : '<button class="btn-small" data-send-settle="' + r.id + '">전송</button>') + '</td>' +
+      '<td>' +
+        (r.sentToFinance ? '<span style="color:var(--ok);font-size:12px;">✓ 전송됨</span><br>' : '') +
+        '<button class="btn-small" data-send-settle="' + r.id + '">' + (r.sentToFinance ? '다시 전송' : '전송') + '</button>' +
+      '</td>' +
       '<td class="row-actions">' +
         '<button class="btn-small" data-edit-settle="' + r.id + '">수정</button>' +
         '<button class="btn-small btn-danger" data-del-settle="' + r.id + '">삭제</button>' +
@@ -740,6 +743,16 @@
     document.querySelectorAll('#settlementRows button[data-send-settle]').forEach(function (b) {
       b.addEventListener('click', async function () {
         var id = b.getAttribute('data-send-settle');
+        var r0 = settlementCache.find(function (x) { return x.id === id; });
+        // Already sent once — this is a RESEND, not a first send. Safe to
+        // do any number of times: 파이낸스 쪽에서 같은 정산 건은 "새로
+        // 더하기"가 아니라 "이전에 보낸 것과의 차이만" 반영하므로, 금액을
+        // 안 바꾸고 다시 누르면 그냥 아무 변화 없이 끝난다. 그래서 실제로
+        // 바뀐 게 있을 때(방금 실제 금액을 다시 세었거나, 위에서 "수정"으로
+        // 고쳤을 때)만 다시 누르면 된다.
+        if (r0 && r0.sentToFinance) {
+          if (!confirm('이미 한 번 보낸 정산이에요. 지금 이 건의 실제 금액 기준으로 다시 계산해서 보낼까요? (바뀐 부분만 파이낸스에 반영돼요. 숫자를 안 바꿨다면 보내도 변화는 없어요.)')) return;
+        }
         b.disabled = true;
         b.textContent = '전송 중...';
         var r = await fetch('/api/admin/settlements/' + id + '/send-to-finance', { method: 'POST' });
@@ -749,7 +762,7 @@
           var data = await r.json();
           alert(data.error || '전송에 실패했어요.');
           b.disabled = false;
-          b.textContent = '전송';
+          b.textContent = r0 && r0.sentToFinance ? '다시 전송' : '전송';
         }
       });
     });
