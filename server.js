@@ -17,16 +17,25 @@ function notifyYouthBudget(record) {
     }
     try {
       const target = new URL('/api/webhook/cafe-settlement', url);
-      // 현금/은행은 카페가 센 절대 금액을 그대로 보내지만, 터치앤고는 카페
-      // 지갑 잔액(actualTng)을 그대로 보내면 안 된다 — 카페 지갑과 파이낸스가
-      // 보는 터치앤고는 같은 숫자가 아니라서, 이번 정산으로 "얼마나 늘었는지"
-      // (increase)만 보내고 파이낸스 쪽에서 자기 터치앤고 잔액에 더하게 한다.
+      // 카페(jusumcafe)가 세는 현금/터치앤고/은행은 카페 자신의 서랍/지갑/
+      // 계좌일 뿐이고, 파이낸스가 들고 있는 현금/터치앤고/은행 전체(회비·
+      // 수동입력 포함)와 같은 숫자가 아니다. 그래서 셋 다 절대 금액을 그대로
+      // 보내지 않고, 이번 정산으로 카페 쪽에서 "얼마나 늘었는지"(increase)만
+      // 계산해서 보내고, 파이낸스 쪽에서 자기 잔액에 더하게 한다 — 전에는
+      // 현금/은행만 절대값으로 보내서, 파이낸스가 따로 들고 있던 현금/은행
+      // 잔액이 카페 쪽 숫자로 통째로 덮어써져 사라지는 버그가 있었다.
+      const cashIncrease = record.actualCash - (record.prevCash || 0);
       const tngIncrease = record.actualTng - (record.prevTng || 0);
+      const bankIncrease = (typeof record.actualBank === 'number' ? record.actualBank : 0) - (record.prevBank || 0);
       const payload = JSON.stringify({
         date: record.date,
-        cash: record.actualCash,
+        // 같은 정산 건(record.id)을 나중에 고쳐서 다시 보내는 경우(아래
+        // PUT /settlements/:id), 파이낸스 쪽이 "새 증가분"이 아니라 "이전에
+        // 적용한 증가분에 대한 정정"으로 처리하도록 묶어주는 식별자.
+        externalId: 'cafepos_settlement_' + record.id,
+        cashIncrease,
         tngIncrease,
-        bank: typeof record.actualBank === 'number' ? record.actualBank : null,
+        bankIncrease,
         memo: '카페 정산 전송'
       });
       const req = https.request(target, {
@@ -593,6 +602,7 @@ app.post('/api/admin/settlement', (req, res) => {
     uptoAt: beforeOrAt,
     prevCash: settings.settlement.actualCash || 0,
     prevTng: settings.settlement.actualTng || 0,
+    prevBank: settings.settlement.actualBank || 0,
     recordedCash: recorded.cash,
     recordedTng: recorded.tng,
     recordedCashExpense: spent.cash,
