@@ -197,16 +197,29 @@ app.get('/api/orders', (req, res) => {
 });
 
 // Staff places an order from the till screen.
+//
+// clientId: the till screen can queue an order offline (wifi drop) and
+// retry it once it's back online. The till generates this id itself when
+// the order is first created, before it knows whether the save will
+// succeed — so a retry (same clientId) must not create a second order.
+// If we've already saved an order with this clientId, just return it
+// instead of creating a duplicate.
 app.post('/api/orders', (req, res) => {
-  const { items, total, pay, cashier, device } = req.body || {};
+  const { items, total, pay, cashier, device, clientId } = req.body || {};
   if (!Array.isArray(items) || items.length === 0) {
     return res.status(400).json({ error: 'items is required' });
   }
   if (typeof total !== 'number' || total <= 0) {
     return res.status(400).json({ error: 'total must be a positive number' });
   }
+  const orders = db.getOrders();
+  if (clientId) {
+    const existing = orders.find((o) => o.clientId === clientId);
+    if (existing) return res.status(201).json(existing);
+  }
   const order = {
     id: uid(),
+    clientId: clientId || null,
     createdAt: new Date().toISOString(),
     items,
     total,
@@ -215,7 +228,6 @@ app.post('/api/orders', (req, res) => {
     device: device || null, // which till/device placed this order
     status: 'new' // 'new' | 'done' — used by the Brew Board
   };
-  const orders = db.getOrders();
   orders.push(order);
   db.saveOrders(orders);
   res.status(201).json(order);
