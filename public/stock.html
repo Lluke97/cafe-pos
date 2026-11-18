@@ -119,7 +119,7 @@
     var statusText = latest ? (latest.date + ' 기준 ' + latest.qty + ' ' + unitDisplay(item)) : '기록 없음';
     return '<div class="inv-item" data-id="' + item.id + '">' +
       '<div class="top"><span class="name">' + item.name + ' (' + unitDisplay(item) + ')</span>' +
-        '<input type="number" step="0.01" data-qty="' + item.id + '" placeholder="수량(' + item.unit + ')">' +
+        '<input type="number" step="1" min="0" data-qty="' + item.id + '" placeholder="수량(' + item.unit + ')">' +
       '</div>' +
       '<div class="sub ' + (low ? 'status-low' : '') + '">' + statusText + (low ? ' · 🛒 구매 필요' : '') + '</div>' +
     '</div>';
@@ -165,7 +165,7 @@
     var counts = [];
     document.querySelectorAll('[data-qty]').forEach(function (input) {
       if (input.value === '') return;
-      var qty = parseFloat(input.value);
+      var qty = parseInt(input.value, 10);
       if (Number.isNaN(qty)) return;
       counts.push({ itemId: input.getAttribute('data-qty'), qty: qty });
     });

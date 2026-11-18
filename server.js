@@ -298,7 +298,7 @@ app.post('/api/inventory/submit', (req, res) => {
     const logs = db.getInventoryLogs();
     const now = new Date().toISOString();
     counts.forEach((e) => {
-      if (!e || typeof e.itemId !== 'string' || typeof e.qty !== 'number' || Number.isNaN(e.qty)) return;
+      if (!e || typeof e.itemId !== 'string' || !Number.isInteger(e.qty)) return;
       const idx = logs.findIndex((l) => l.itemId === e.itemId && l.date === theDate);
       if (idx !== -1) {
         logs[idx].qty = e.qty;
@@ -397,13 +397,16 @@ app.post('/api/admin/inventory/items', (req, res) => {
   if (type !== undefined && !INVENTORY_TYPES.includes(type)) {
     return res.status(400).json({ error: `type must be one of ${INVENTORY_TYPES.join('|')}` });
   }
+  if (minQty !== undefined && !Number.isInteger(minQty)) {
+    return res.status(400).json({ error: 'minQty must be a whole number' });
+  }
   const items = db.getInventoryItems();
   const item = {
     id: uid(),
     name,
     unit: unit || '개',
     packSize: typeof packSize === 'string' ? packSize.trim() : '',
-    minQty: typeof minQty === 'number' ? minQty : 0,
+    minQty: Number.isInteger(minQty) ? minQty : 0,
     type: type || 'count'
   };
   items.push(item);
@@ -422,7 +425,10 @@ app.put('/api/admin/inventory/items/:id', (req, res) => {
   if (name !== undefined) items[idx].name = name;
   if (unit !== undefined) items[idx].unit = unit;
   if (packSize !== undefined) items[idx].packSize = typeof packSize === 'string' ? packSize.trim() : '';
-  if (minQty !== undefined) items[idx].minQty = minQty;
+  if (minQty !== undefined) {
+    if (!Number.isInteger(minQty)) return res.status(400).json({ error: 'minQty must be a whole number' });
+    items[idx].minQty = minQty;
+  }
   if (type !== undefined) items[idx].type = type;
   db.saveInventoryItems(items);
   res.json(items[idx]);
@@ -460,7 +466,7 @@ app.post('/api/admin/inventory/logs', (req, res) => {
   const now = new Date().toISOString();
   let saved = 0;
   entries.forEach((e) => {
-    if (!e || typeof e.itemId !== 'string' || typeof e.qty !== 'number' || Number.isNaN(e.qty)) return;
+    if (!e || typeof e.itemId !== 'string' || !Number.isInteger(e.qty)) return;
     const idx = logs.findIndex((l) => l.itemId === e.itemId && l.date === date);
     if (idx !== -1) {
       logs[idx].qty = e.qty;
@@ -481,7 +487,7 @@ app.put('/api/admin/inventory/logs/:id', (req, res) => {
   if (idx === -1) return res.status(404).json({ error: 'not found' });
   const { qty, date, author } = req.body || {};
   if (qty !== undefined) {
-    if (typeof qty !== 'number' || Number.isNaN(qty)) return res.status(400).json({ error: 'qty must be a number' });
+    if (!Number.isInteger(qty)) return res.status(400).json({ error: 'qty must be a whole number' });
     logs[idx].qty = qty;
   }
   if (date !== undefined) logs[idx].date = date;

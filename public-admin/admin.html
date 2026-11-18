@@ -279,7 +279,7 @@
         </select>
         <input id="invUnitCustom" placeholder="단위 입력" style="margin-top:6px; display:none;">
       </div>
-      <div class="field"><label>최소 재고</label><input id="invMinQty" type="number" step="0.01" placeholder="예: 1"></div>
+      <div class="field"><label>최소 재고</label><input id="invMinQty" type="number" step="1" min="0" placeholder="예: 1"></div>
       <button id="invAddBtn" class="btn btn-primary active" style="flex:0 0 auto; padding:10px 16px;">추가</button>
     </div>
     <div style="font-size:11px; color:var(--text-muted); margin:-4px 0 10px;">
@@ -1467,7 +1467,7 @@
       '<td>' + invUnitDisplay(item) + '</td>' +
       '<td style="font-size:12px; color:var(--text-muted);">' + latestText + '</td>' +
       '<td>' + statusHtml2 + '</td>' +
-      '<td><input type="number" step="0.01" data-inv-qty="' + item.id + '" placeholder="수량(' + item.unit + ')" style="width:90px"></td>' +
+      '<td><input type="number" step="1" min="0" data-inv-qty="' + item.id + '" placeholder="수량(' + item.unit + ')" style="width:90px"></td>' +
       '</tr>';
   }
 
@@ -1496,7 +1496,7 @@
         '<select data-f="unit" style="width:90px; margin-top:4px;">' + invUnitOptionsHtml(item.unit) + '</select>' +
         '<input data-f="unitCustom" value="' + (INV_UNIT_OPTIONS.indexOf(item.unit) === -1 ? item.unit.replace(/"/g, '&quot;') : '') + '" placeholder="단위" style="width:90px; margin-top:4px; display:none;">' +
       '</td>' +
-      '<td><input type="number" step="0.01" value="' + item.minQty + '" data-f="minQty" style="width:80px"></td>' +
+      '<td><input type="number" step="1" min="0" value="' + item.minQty + '" data-f="minQty" style="width:80px"></td>' +
       '<td class="row-actions">' +
         '<button class="btn-small inline-save" data-save-inv="' + item.id + '">저장</button>' +
         '<button class="btn-small" data-cancel-inv="' + item.id + '">취소</button>' +
@@ -1521,7 +1521,7 @@
     return '<tr data-id="' + log.id + '" class="menu-edit-row">' +
       '<td><input type="date" value="' + log.date + '" data-f="date" style="width:120px"></td>' +
       '<td>' + (item ? item.name : log.itemId) + '</td>' +
-      '<td><input type="number" step="0.01" value="' + log.qty + '" data-f="qty" style="width:80px">' + (item ? invUnitDisplay(item) : '') + '</td>' +
+      '<td><input type="number" step="1" min="0" value="' + log.qty + '" data-f="qty" style="width:80px">' + (item ? invUnitDisplay(item) : '') + '</td>' +
       '<td><input value="' + (log.author || '').replace(/"/g, '&quot;') + '" data-f="author" style="width:90px" placeholder="입력자"></td>' +
       '<td class="row-actions">' +
         '<button class="btn-small inline-save" data-save-log="' + log.id + '">저장</button>' +
@@ -1588,10 +1588,10 @@
         var id = b.getAttribute('data-save-log');
         var tr = document.querySelector('#invLogRows tr[data-id="' + id + '"]');
         var date = tr.querySelector('[data-f="date"]').value;
-        var qty = parseFloat(tr.querySelector('[data-f="qty"]').value);
+        var qty = parseInt(tr.querySelector('[data-f="qty"]').value, 10);
         var author = tr.querySelector('[data-f="author"]').value.trim();
         if (!date) return alert('날짜를 입력해주세요');
-        if (Number.isNaN(qty)) return alert('수량을 입력해주세요');
+        if (Number.isNaN(qty)) return alert('수량을 숫자로 입력해주세요 (소숫점 없이)');
         await fetch('/api/admin/inventory/logs/' + id, {
           method: 'PUT',
           headers: { 'Content-Type': 'application/json' },
@@ -1656,7 +1656,7 @@
         var unitSel = tr.querySelector('[data-f="unit"]').value;
         var unit = (unitSel === 'custom' ? tr.querySelector('[data-f="unitCustom"]').value.trim() : unitSel) || '개';
         var packSize = tr.querySelector('[data-f="packSize"]').value.trim();
-        var minQty = parseFloat(tr.querySelector('[data-f="minQty"]').value);
+        var minQty = parseInt(tr.querySelector('[data-f="minQty"]').value, 10);
         if (!name) return alert('이름을 입력해주세요');
         await fetch('/api/admin/inventory/items/' + id, {
           method: 'PUT',
@@ -1696,7 +1696,7 @@
     var unitSel = document.getElementById('invUnit').value;
     var unit = (unitSel === 'custom' ? document.getElementById('invUnitCustom').value.trim() : unitSel) || '개';
     var packSize = document.getElementById('invPackSize').value.trim();
-    var minQty = parseFloat(document.getElementById('invMinQty').value);
+    var minQty = parseInt(document.getElementById('invMinQty').value, 10);
     if (!name) return alert('이름을 입력해주세요');
     await fetch('/api/admin/inventory/items', {
       method: 'POST',
@@ -1719,7 +1719,7 @@
     var counts = [];
     document.querySelectorAll('#invInputRows input[data-inv-qty]').forEach(function (input) {
       if (input.value === '') return;
-      var qty = parseFloat(input.value);
+      var qty = parseInt(input.value, 10);
       if (Number.isNaN(qty)) return;
       counts.push({ itemId: input.getAttribute('data-inv-qty'), qty: qty });
     });
