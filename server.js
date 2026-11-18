@@ -315,6 +315,83 @@ app.delete('/api/admin/menu/:id', (req, res) => {
   res.json({ ok: true });
 });
 
+// ---------------- 재고 (inventory) ----------------
+app.get('/api/admin/inventory/items', (req, res) => res.json(db.getInventoryItems()));
+
+app.post('/api/admin/inventory/items', (req, res) => {
+  const { name, unit, minQty } = req.body || {};
+  if (!name) return res.status(400).json({ error: 'name is required' });
+  const items = db.getInventoryItems();
+  const item = { id: uid(), name, unit: unit || '개', minQty: typeof minQty === 'number' ? minQty : 0 };
+  items.push(item);
+  db.saveInventoryItems(items);
+  res.status(201).json(item);
+});
+
+app.put('/api/admin/inventory/items/:id', (req, res) => {
+  const items = db.getInventoryItems();
+  const idx = items.findIndex((i) => i.id === req.params.id);
+  if (idx === -1) return res.status(404).json({ error: 'not found' });
+  const { name, unit, minQty } = req.body || {};
+  if (name !== undefined) items[idx].name = name;
+  if (unit !== undefined) items[idx].unit = unit;
+  if (minQty !== undefined) items[idx].minQty = minQty;
+  db.saveInventoryItems(items);
+  res.json(items[idx]);
+});
+
+app.delete('/api/admin/inventory/items/:id', (req, res) => {
+  const items = db.getInventoryItems();
+  const next = items.filter((i) => i.id !== req.params.id);
+  db.saveInventoryItems(next);
+  // 그 항목의 지난 재고 기록도 같이 지워서, 삭제된 항목이 기록에 고아로
+  // 남아 있다가 나중에 혼란을 주지 않게 한다.
+  const logs = db.getInventoryLogs().filter((l) => l.itemId !== req.params.id);
+  db.saveInventoryLogs(logs);
+  res.json({ ok: true });
+});
+
+app.get('/api/admin/inventory/logs', (req, res) => {
+  let logs = db.getInventoryLogs();
+  if (req.query.itemId) logs = logs.filter((l) => l.itemId === req.query.itemId);
+  if (req.query.date) logs = logs.filter((l) => l.date === req.query.date);
+  res.json(logs);
+});
+
+// 장사 끝나고 재고를 한 번에 쭉 세어서 넣는 화면에서 쓰는 벌크 저장.
+// entries: [{ itemId, qty }, ...] — 같은 itemId+date 줄이 이미 있으면
+// 덮어쓰고(하루에 다시 고쳐도 중복 안 쌓임), 없으면 새로 추가한다.
+app.post('/api/admin/inventory/logs', (req, res) => {
+  const { date, entries, note } = req.body || {};
+  if (!date || !Array.isArray(entries) || entries.length === 0) {
+    return res.status(400).json({ error: 'date and a non-empty entries[] are required' });
+  }
+  const logs = db.getInventoryLogs();
+  const now = new Date().toISOString();
+  let saved = 0;
+  entries.forEach((e) => {
+    if (!e || typeof e.itemId !== 'string' || typeof e.qty !== 'number' || Number.isNaN(e.qty)) return;
+    const idx = logs.findIndex((l) => l.itemId === e.itemId && l.date === date);
+    if (idx !== -1) {
+      logs[idx].qty = e.qty;
+      if (note !== undefined) logs[idx].note = note;
+      logs[idx].updatedAt = now;
+    } else {
+      logs.push({ id: uid(), itemId: e.itemId, date, qty: e.qty, note: note || '', createdAt: now });
+    }
+    saved++;
+  });
+  db.saveInventoryLogs(logs);
+  res.json({ ok: true, saved });
+});
+
+app.delete('/api/admin/inventory/logs/:id', (req, res) => {
+  const logs = db.getInventoryLogs();
+  const next = logs.filter((l) => l.id !== req.params.id);
+  db.saveInventoryLogs(next);
+  res.json({ ok: true });
+});
+
 app.get('/api/admin/orders', (req, res) => {
   let orders = db.getOrders();
   if (req.query.date) orders = orders.filter((o) => myDateStr(new Date(o.createdAt)) === req.query.date);

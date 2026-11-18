@@ -65,6 +65,7 @@
   <div class="tab" data-tab="orders">주문 내역</div>
   <div class="tab" data-tab="expenses">구매·지출</div>
   <div class="tab" data-tab="menu">메뉴 관리</div>
+  <div class="tab" data-tab="inventory">📦 재고</div>
   <div class="tab" data-tab="cashcount">🧮 현금 계산기</div>
 </div>
 
@@ -214,6 +215,54 @@
   </div>
 </section>
 
+<section id="tab-inventory" class="admin-section hidden">
+  <div class="settlement-card" style="margin:16px;">
+    <h2 style="margin:0 0 10px; font-size:15px; font-weight:700;">📦 재고 입력 (장사 끝나고 세어서 입력)</h2>
+    <div style="font-size:12px; color:var(--text-muted); margin-bottom:10px;">
+      항목별로 지금 남은 수량을 입력하고 저장하면, 그 날짜로 재고 기록이 남아요.
+      최소 재고보다 적으면 "🛒 구매 필요"로 표시돼요. 빈칸으로 둔 항목은 저장 안 돼요.
+    </div>
+    <div class="field" style="max-width:220px; margin-bottom:10px;">
+      <label>날짜</label>
+      <input id="invLogDate" type="date">
+    </div>
+    <div class="table-scroll">
+      <table class="admin-table">
+        <thead><tr><th>항목</th><th>단위</th><th>최근 기록</th><th>상태</th><th>이번에 입력</th></tr></thead>
+        <tbody id="invInputRows"></tbody>
+      </table>
+    </div>
+    <button id="invSaveBtn" class="btn btn-primary active" style="width:100%; margin-top:10px;">재고 기록 저장</button>
+    <p id="invSaveResult" style="font-size:13px; color:var(--text-muted); margin-top:8px;"></p>
+  </div>
+
+  <div class="settlement-card" style="margin:16px;">
+    <h2 style="margin:0 0 10px; font-size:15px; font-weight:700;">재고 항목 관리</h2>
+    <div class="menu-form-row">
+      <div class="field"><label>이름</label><input id="invName" placeholder="예: 원두"></div>
+      <div class="field"><label>단위</label><input id="invUnit" placeholder="예: kg, 병, 개"></div>
+      <div class="field"><label>최소 재고</label><input id="invMinQty" type="number" step="0.01" placeholder="예: 1"></div>
+      <button id="invAddBtn" class="btn btn-primary active" style="flex:0 0 auto; padding:10px 16px;">추가</button>
+    </div>
+    <div class="table-scroll">
+      <table class="admin-table">
+        <thead><tr><th>이름</th><th>단위</th><th>최소 재고</th><th></th></tr></thead>
+        <tbody id="invItemRows"></tbody>
+      </table>
+    </div>
+  </div>
+
+  <div class="settlement-card" style="margin:16px;">
+    <h2 style="margin:0 0 10px; font-size:15px; font-weight:700;">최근 재고 기록</h2>
+    <div class="table-scroll">
+      <table class="admin-table">
+        <thead><tr><th>날짜</th><th>항목</th><th>수량</th><th></th></tr></thead>
+        <tbody id="invLogRows"></tbody>
+      </table>
+    </div>
+  </div>
+</section>
+
 <section id="tab-cashcount" class="admin-section hidden">
   <div style="display:flex; flex-wrap:wrap; gap:16px; margin:16px;">
     <div class="settlement-card" style="max-width:420px; flex:1 1 320px;">
@@ -286,6 +335,7 @@
     // 최신 값으로 다시 계산되게 — 탭 전환만으로는 자동 새로고침이 안 되므로
     // 여기서 한 번 더 확실히 불러온다.
     if (name === 'summary') loadSettlementStatus();
+    if (name === 'inventory') loadInventory();
   }
 
   document.querySelectorAll('.admin-tabs .tab').forEach(function (tab) {
@@ -1321,12 +1371,184 @@
     loadMenu();
   });
 
+  // ---------- 재고 (inventory) ----------
+  var invItemsCache = [];
+  var invLogsCache = [];
+
+  function invLatestLog(itemId) {
+    var logs = invLogsCache.filter(function (l) { return l.itemId === itemId; });
+    if (logs.length === 0) return null;
+    return logs.slice().sort(function (a, b) { return a.date < b.date ? 1 : -1; })[0];
+  }
+
+  function invInputRowHtml(item) {
+    var latest = invLatestLog(item.id);
+    var latestText = latest ? (latest.date + ' · ' + latest.qty + item.unit) : '기록 없음';
+    var low = latest ? latest.qty < item.minQty : true;
+    var statusHtml = low
+      ? '<span style="color:var(--danger, #e06c6c); font-weight:600;">🛒 구매 필요</span>'
+      : '<span style="color:var(--ok);">충분</span>';
+    return '<tr data-id="' + item.id + '">' +
+      '<td>' + item.name + '</td>' +
+      '<td>' + item.unit + '</td>' +
+      '<td style="font-size:12px; color:var(--text-muted);">' + latestText + '</td>' +
+      '<td>' + statusHtml + '</td>' +
+      '<td><input type="number" step="0.01" data-inv-qty="' + item.id + '" placeholder="수량" style="width:90px"></td>' +
+      '</tr>';
+  }
+
+  function itemRowHtml(item) {
+    return '<tr data-id="' + item.id + '">' +
+      '<td>' + item.name + '</td><td>' + item.unit + '</td><td>' + item.minQty + '</td>' +
+      '<td class="row-actions">' +
+        '<button class="btn-small" data-edit-inv="' + item.id + '">수정</button>' +
+        '<button class="btn-small btn-danger" data-del-inv="' + item.id + '">삭제</button>' +
+      '</td></tr>';
+  }
+
+  function itemEditRowHtml(item) {
+    return '<tr data-id="' + item.id + '" class="menu-edit-row">' +
+      '<td><input value="' + item.name.replace(/"/g, '&quot;') + '" data-f="name"></td>' +
+      '<td><input value="' + item.unit.replace(/"/g, '&quot;') + '" data-f="unit" style="width:70px"></td>' +
+      '<td><input type="number" step="0.01" value="' + item.minQty + '" data-f="minQty" style="width:80px"></td>' +
+      '<td class="row-actions">' +
+        '<button class="btn-small inline-save" data-save-inv="' + item.id + '">저장</button>' +
+        '<button class="btn-small" data-cancel-inv="' + item.id + '">취소</button>' +
+      '</td></tr>';
+  }
+
+  function logRowHtml(log) {
+    var item = invItemsCache.find(function (i) { return i.id === log.itemId; });
+    return '<tr data-id="' + log.id + '">' +
+      '<td>' + log.date + '</td>' +
+      '<td>' + (item ? item.name : log.itemId) + '</td>' +
+      '<td>' + log.qty + (item ? item.unit : '') + '</td>' +
+      '<td class="row-actions"><button class="btn-small btn-danger" data-del-log="' + log.id + '">삭제</button></td>' +
+      '</tr>';
+  }
+
+  function renderInventoryInputTable() {
+    document.getElementById('invInputRows').innerHTML =
+      invItemsCache.map(invInputRowHtml).join('') || '<tr><td colspan="5">재고 항목이 없어요. 아래에서 추가해주세요.</td></tr>';
+  }
+
+  function renderInventoryItemTable() {
+    document.getElementById('invItemRows').innerHTML =
+      invItemsCache.map(itemRowHtml).join('') || '<tr><td colspan="4">재고 항목 없음</td></tr>';
+    bindInventoryItemRowEvents();
+  }
+
+  function renderInventoryLogTable() {
+    var recent = invLogsCache.slice().sort(function (a, b) { return a.date < b.date ? 1 : -1; }).slice(0, 30);
+    document.getElementById('invLogRows').innerHTML =
+      recent.map(logRowHtml).join('') || '<tr><td colspan="4">재고 기록 없음</td></tr>';
+    document.querySelectorAll('#invLogRows button[data-del-log]').forEach(function (b) {
+      b.addEventListener('click', async function () {
+        if (!confirm('이 재고 기록을 삭제할까요?')) return;
+        await fetch('/api/admin/inventory/logs/' + b.getAttribute('data-del-log'), { method: 'DELETE' });
+        loadInventory();
+      });
+    });
+  }
+
+  function bindInventoryItemRowEvents() {
+    document.querySelectorAll('#invItemRows button[data-edit-inv]').forEach(function (b) {
+      b.addEventListener('click', function () {
+        var id = b.getAttribute('data-edit-inv');
+        var item = invItemsCache.find(function (x) { return x.id === id; });
+        document.querySelector('#invItemRows tr[data-id="' + id + '"]').outerHTML = itemEditRowHtml(item);
+        bindInventoryItemRowEvents();
+      });
+    });
+    document.querySelectorAll('#invItemRows button[data-cancel-inv]').forEach(function (b) {
+      b.addEventListener('click', renderInventoryItemTable);
+    });
+    document.querySelectorAll('#invItemRows button[data-save-inv]').forEach(function (b) {
+      b.addEventListener('click', async function () {
+        var id = b.getAttribute('data-save-inv');
+        var tr = document.querySelector('#invItemRows tr[data-id="' + id + '"]');
+        var name = tr.querySelector('[data-f="name"]').value.trim();
+        var unit = tr.querySelector('[data-f="unit"]').value.trim() || '개';
+        var minQty = parseFloat(tr.querySelector('[data-f="minQty"]').value);
+        if (!name) return alert('이름을 입력해주세요');
+        await fetch('/api/admin/inventory/items/' + id, {
+          method: 'PUT',
+          headers: { 'Content-Type': 'application/json' },
+          body: JSON.stringify({ name: name, unit: unit, minQty: Number.isNaN(minQty) ? 0 : minQty })
+        });
+        loadInventory();
+      });
+    });
+    document.querySelectorAll('#invItemRows button[data-del-inv]').forEach(function (b) {
+      b.addEventListener('click', async function () {
+        if (!confirm('이 재고 항목을 삭제할까요? 지난 재고 기록도 같이 지워져요.')) return;
+        await fetch('/api/admin/inventory/items/' + b.getAttribute('data-del-inv'), { method: 'DELETE' });
+        loadInventory();
+      });
+    });
+  }
+
+  async function loadInventory() {
+    invItemsCache = await api('/api/admin/inventory/items');
+    invLogsCache = await api('/api/admin/inventory/logs');
+    if (!document.getElementById('invLogDate').value) {
+      document.getElementById('invLogDate').value = window.cafeTime.ymd(new Date());
+    }
+    renderInventoryInputTable();
+    renderInventoryItemTable();
+    renderInventoryLogTable();
+  }
+
+  document.getElementById('invAddBtn').addEventListener('click', async function () {
+    var name = document.getElementById('invName').value.trim();
+    var unit = document.getElementById('invUnit').value.trim() || '개';
+    var minQty = parseFloat(document.getElementById('invMinQty').value);
+    if (!name) return alert('이름을 입력해주세요');
+    await fetch('/api/admin/inventory/items', {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify({ name: name, unit: unit, minQty: Number.isNaN(minQty) ? 0 : minQty })
+    });
+    document.getElementById('invName').value = '';
+    document.getElementById('invUnit').value = '';
+    document.getElementById('invMinQty').value = '';
+    loadInventory();
+  });
+
+  document.getElementById('invSaveBtn').addEventListener('click', async function () {
+    var date = document.getElementById('invLogDate').value;
+    if (!date) return alert('날짜를 선택해주세요');
+    var entries = [];
+    document.querySelectorAll('#invInputRows input[data-inv-qty]').forEach(function (input) {
+      if (input.value === '') return;
+      var qty = parseFloat(input.value);
+      if (Number.isNaN(qty)) return;
+      entries.push({ itemId: input.getAttribute('data-inv-qty'), qty: qty });
+    });
+    if (entries.length === 0) return alert('입력한 수량이 없어요.');
+    var res = await fetch('/api/admin/inventory/logs', {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify({ date: date, entries: entries })
+    });
+    var data = await res.json();
+    var resultEl = document.getElementById('invSaveResult');
+    if (res.ok) {
+      resultEl.textContent = '✓ ' + data.saved + '개 항목 저장됨 (' + date + ')';
+      document.querySelectorAll('#invInputRows input[data-inv-qty]').forEach(function (input) { input.value = ''; });
+      loadInventory();
+    } else {
+      resultEl.textContent = '오류: ' + (data.error || '저장 실패');
+    }
+  });
+
   loadSettlementStatus();
   loadSettlementHistory();
   loadSummary();
   loadOrders();
   loadExpenses();
   loadMenu();
+  loadInventory();
 </script>
 </body>
 </html>

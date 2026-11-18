@@ -50,6 +50,21 @@ const DEFAULT_MENU = [
 // youth-budget site gets the full cash/TnG/bank picture on each settlement.
 const DEFAULT_SETTINGS = { settlement: { at: null, date: null, actualCash: 0, actualTng: 0, actualBank: 0 } };
 
+// 재고 항목 — 각 항목의 "최소 재고"(minQty) 밑으로 떨어지면 장사 끝나고
+// 재고 입력할 때 "구매 필요"로 표시된다. 숫자는 그냥 기본값이라 관리자가
+// 재고 탭에서 언제든 고치거나 항목을 추가/삭제할 수 있다.
+const DEFAULT_INVENTORY_ITEMS = [
+  { id: 'inv_coffeebean', name: '원두',     unit: 'kg', minQty: 1 },
+  { id: 'inv_milk',       name: '우유',     unit: 'L',  minQty: 2 },
+  { id: 'inv_omija',      name: '오미자',   unit: '병', minQty: 1 },
+  { id: 'inv_juice',      name: '주스',     unit: '병', minQty: 1 },
+  { id: 'inv_ice',        name: '얼음',     unit: '봉', minQty: 2 },
+  { id: 'inv_icecup',     name: '아이스컵', unit: '개', minQty: 20 },
+  { id: 'inv_hotcup',     name: '핫 컵',    unit: '개', minQty: 20 },
+  { id: 'inv_straw',      name: '빨대',     unit: '개', minQty: 30 },
+  { id: 'inv_tissue',     name: '휴지',     unit: '개', minQty: 1 }
+];
+
 module.exports = {
   getMenu: () => readJSON('menu', DEFAULT_MENU),
   saveMenu: (menu) => writeJSON('menu', menu),
@@ -59,6 +74,15 @@ module.exports = {
 
   getExpenses: () => readJSON('expenses', []),
   saveExpenses: (expenses) => writeJSON('expenses', expenses),
+
+  getInventoryItems: () => readJSON('inventoryItems', DEFAULT_INVENTORY_ITEMS),
+  saveInventoryItems: (items) => writeJSON('inventoryItems', items),
+
+  // 재고 기록(로그) — 재고를 셀 때마다(보통 장사 끝나고 한 번) 그날 날짜로
+  // 항목별 수량 한 줄씩. 같은 항목+같은 날짜에 다시 입력하면 그 줄을
+  // 덮어쓴다(하루에 여러 번 고쳐도 중복으로 쌓이지 않도록).
+  getInventoryLogs: () => readJSON('inventoryLogs', []),
+  saveInventoryLogs: (logs) => writeJSON('inventoryLogs', logs),
 
   getSettings: () => Object.assign({}, DEFAULT_SETTINGS, readJSON('settings', DEFAULT_SETTINGS)),
   saveSettings: (settings) => writeJSON('settings', settings),
