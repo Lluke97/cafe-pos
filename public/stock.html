@@ -1,0 +1,186 @@
+<!doctype html>
+<html lang="ko">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1, maximum-scale=1, user-scalable=no, viewport-fit=cover">
+<title>재고 입력</title>
+<link rel="manifest" href="/manifest.json">
+<meta name="theme-color" content="#7a4a2b">
+<meta name="apple-mobile-web-app-capable" content="yes">
+<meta name="apple-mobile-web-app-status-bar-style" content="black-translucent">
+<meta name="apple-mobile-web-app-title" content="주섬주섬 카페">
+<link rel="apple-touch-icon" href="/icons/apple-touch-icon.png">
+<link rel="icon" href="/icons/icon-192.png">
+<link rel="stylesheet" href="style.css">
+<script src="theme.js"></script>
+<style>
+  .inv-item { padding: 14px; border-radius: 12px; background: var(--surface); border: 1px solid var(--border); margin-bottom: 10px; }
+  .inv-item .top { display: flex; align-items: center; justify-content: space-between; gap: 10px; }
+  .inv-item .name { font-weight: 700; font-size: 15px; }
+  .inv-item .sub { font-size: 12px; color: var(--text-muted); margin-top: 2px; }
+  .inv-item .status-low { color: var(--danger, #e06c6c); font-weight: 600; }
+  .inv-item .status-ok { color: var(--ok); }
+  .inv-item input[type="number"] { width: 100px; text-align: right; }
+  .inv-req-btn { width: 100%; margin-top: 8px; }
+</style>
+</head>
+<body>
+<header>
+  <h1>📦 재고 입력</h1>
+  <div class="header-right">
+    <span></span>
+    <button id="themeBtn" title="테마 변경">🌓</button>
+    <div class="nav-wrap">
+      <button class="nav-btn" id="navBtn">☰</button>
+      <div class="nav-menu" id="navMenu" hidden>
+        <a href="/">🏠 홈</a>
+        <a href="/pos.html">🧾 계산대</a>
+        <a href="/brew.html">🍵 브루 보드</a>
+        <a href="/entry.html">🧮 구매·지출 입력</a>
+        <a href="/stock.html" class="current">📦 재고 입력</a>
+        <a href="/admin">🛠️ 관리자</a>
+      </div>
+    </div>
+  </div>
+</header>
+
+<div class="form-card">
+  <div class="field">
+    <label>날짜</label>
+    <input type="date" id="date">
+  </div>
+  <div class="field">
+    <label>작성자 이름 (선택)</label>
+    <input type="text" id="author" placeholder="예: 홍길동">
+  </div>
+
+  <div id="invList" style="margin-top:14px;"></div>
+
+  <button id="submitBtn" class="btn btn-primary active" style="width:100%; margin-top:6px;">수량 입력 저장</button>
+  <div style="font-size:11px; color:var(--text-muted); margin-top:8px;">
+    🛒 구매 요청 버튼은 누르는 즉시 바로 보내져요. 수량을 적는 항목은 아래 "수량 입력 저장"을 눌러야 저장돼요.
+  </div>
+  <div id="toast" class="toast" hidden></div>
+</div>
+
+<script>
+  var items = [];
+  var logs = [];
+  var requests = [];
+
+  document.getElementById('date').value = window.cafeTime.ymd(new Date());
+
+  document.getElementById('navBtn').addEventListener('click', function (e) {
+    e.stopPropagation();
+    document.getElementById('navMenu').hidden = !document.getElementById('navMenu').hidden;
+  });
+  document.addEventListener('click', function () {
+    document.getElementById('navMenu').hidden = true;
+  });
+
+  function showToast(msg, isError) {
+    var t = document.getElementById('toast');
+    t.textContent = msg;
+    t.hidden = false;
+    t.className = 'toast' + (isError ? ' error' : '');
+    setTimeout(function () { t.hidden = true; }, 2200);
+  }
+
+  function latestLog(itemId) {
+    var ls = logs.filter(function (l) { return l.itemId === itemId; });
+    if (ls.length === 0) return null;
+    return ls.slice().sort(function (a, b) { return a.date < b.date ? 1 : -1; })[0];
+  }
+
+  function pendingRequest(itemId) {
+    return requests.find(function (r) { return r.itemId === itemId && !r.resolved; }) || null;
+  }
+
+  function itemHtml(item) {
+    if (item.type === 'request') {
+      var pending = pendingRequest(item.id);
+      var statusHtml = pending
+        ? '<span class="status-low">🛒 이미 요청됨 (' + pending.date + ')</span>'
+        : '<span class="status-ok">요청 없음</span>';
+      return '<div class="inv-item" data-id="' + item.id + '">' +
+        '<div class="top"><span class="name">' + item.name + '</span>' + statusHtml + '</div>' +
+        '<div class="sub">낱개로 세기 번거로운 항목이에요 — 부족하면 버튼만 눌러주세요.</div>' +
+        '<button class="btn btn-secondary inv-req-btn" data-req="' + item.id + '"' + (pending ? ' disabled' : '') + '>' +
+          (pending ? '✓ 요청됨' : '🛒 구매 요청 보내기') +
+        '</button>' +
+      '</div>';
+    }
+    var latest = latestLog(item.id);
+    var low = latest ? latest.qty < item.minQty : true;
+    var statusText = latest ? (latest.date + ' 기준 ' + latest.qty + item.unit) : '기록 없음';
+    return '<div class="inv-item" data-id="' + item.id + '">' +
+      '<div class="top"><span class="name">' + item.name + ' (' + item.unit + ')</span>' +
+        '<input type="number" step="0.01" data-qty="' + item.id + '" placeholder="수량">' +
+      '</div>' +
+      '<div class="sub ' + (low ? 'status-low' : '') + '">' + statusText + (low ? ' · 🛒 구매 필요' : '') + '</div>' +
+    '</div>';
+  }
+
+  function render() {
+    document.getElementById('invList').innerHTML = items.map(itemHtml).join('') || '<div class="sub">재고 항목이 없어요. 관리자 페이지에서 추가해주세요.</div>';
+    document.querySelectorAll('[data-req]').forEach(function (b) {
+      b.addEventListener('click', async function () {
+        var itemId = b.getAttribute('data-req');
+        b.disabled = true;
+        try {
+          var res = await fetch('/api/inventory/submit', {
+            method: 'POST',
+            headers: { 'Content-Type': 'application/json' },
+            body: JSON.stringify({
+              date: document.getElementById('date').value,
+              author: document.getElementById('author').value,
+              requests: [itemId]
+            })
+          });
+          if (!res.ok) throw new Error('fail');
+          showToast('구매 요청 보냈어요 ✓');
+          await load();
+        } catch (e) {
+          showToast('요청 실패 - 다시 시도해주세요', true);
+          b.disabled = false;
+        }
+      });
+    });
+  }
+
+  async function load() {
+    items = await (await fetch('/api/inventory/items')).json();
+    logs = await (await fetch('/api/inventory/logs')).json();
+    requests = await (await fetch('/api/inventory/requests?resolved=false')).json();
+    render();
+  }
+
+  document.getElementById('submitBtn').addEventListener('click', async function () {
+    var date = document.getElementById('date').value;
+    if (!date) return showToast('날짜를 선택해주세요', true);
+    var counts = [];
+    document.querySelectorAll('[data-qty]').forEach(function (input) {
+      if (input.value === '') return;
+      var qty = parseFloat(input.value);
+      if (Number.isNaN(qty)) return;
+      counts.push({ itemId: input.getAttribute('data-qty'), qty: qty });
+    });
+    if (counts.length === 0) return showToast('입력한 수량이 없어요', true);
+    try {
+      var res = await fetch('/api/inventory/submit', {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ date: date, author: document.getElementById('author').value, counts: counts })
+      });
+      if (!res.ok) throw new Error('fail');
+      showToast('저장됐어요 ✓');
+      await load();
+    } catch (e) {
+      showToast('저장 실패 - 다시 시도해주세요', true);
+    }
+  });
+
+  load();
+</script>
+</body>
+</html>

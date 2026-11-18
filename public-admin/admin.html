@@ -54,6 +54,7 @@
         <a href="/pos.html">🧾 계산대</a>
         <a href="/brew.html">🍵 브루 보드</a>
         <a href="/entry.html">🧮 구매·지출 입력</a>
+        <a href="/stock.html">📦 재고 입력</a>
         <a href="/admin" class="current">🛠️ 관리자</a>
       </div>
     </div>
@@ -219,8 +220,8 @@
   <div class="settlement-card" style="margin:16px;">
     <h2 style="margin:0 0 10px; font-size:15px; font-weight:700;">📦 재고 입력 (장사 끝나고 세어서 입력)</h2>
     <div style="font-size:12px; color:var(--text-muted); margin-bottom:10px;">
-      항목별로 지금 남은 수량을 입력하고 저장하면, 그 날짜로 재고 기록이 남아요.
-      최소 재고보다 적으면 "🛒 구매 필요"로 표시돼요. 빈칸으로 둔 항목은 저장 안 돼요.
+      개수 세는 항목은 지금 남은 수량을 입력하고, 구매요청만 항목은 버튼으로 바로 요청을 보내요.
+      최소 재고보다 적으면 "🛒 구매 필요"로 표시돼요. 빈칸으로 둔 항목은 저장 안 돼요. (직원 누구나 카페 홈 화면의 "재고 입력"에서도 넣을 수 있어요.)
     </div>
     <div class="field" style="max-width:220px; margin-bottom:10px;">
       <label>날짜</label>
@@ -237,16 +238,36 @@
   </div>
 
   <div class="settlement-card" style="margin:16px;">
+    <h2 style="margin:0 0 10px; font-size:15px; font-weight:700;">📬 구매 요청 (처리 대기)</h2>
+    <div style="font-size:12px; color:var(--text-muted); margin-bottom:10px;">
+      컵·빨대·휴지처럼 낱개로 세기 번거로운 항목은 수량 대신 여기로 "구매 요청"만 들어와요. 사 왔으면 처리완료 눌러주세요.
+    </div>
+    <div class="table-scroll">
+      <table class="admin-table">
+        <thead><tr><th>항목</th><th>요청한 날짜</th><th>요청자</th><th></th></tr></thead>
+        <tbody id="invRequestRows"></tbody>
+      </table>
+    </div>
+  </div>
+
+  <div class="settlement-card" style="margin:16px;">
     <h2 style="margin:0 0 10px; font-size:15px; font-weight:700;">재고 항목 관리</h2>
     <div class="menu-form-row">
       <div class="field"><label>이름</label><input id="invName" placeholder="예: 원두"></div>
+      <div class="field">
+        <label>유형</label>
+        <select id="invType">
+          <option value="count">개수 세기 (원두·우유처럼 정확한 수량)</option>
+          <option value="request">구매요청만 (컵·빨대처럼 세기 번거로운 것)</option>
+        </select>
+      </div>
       <div class="field"><label>단위</label><input id="invUnit" placeholder="예: kg, 병, 개"></div>
       <div class="field"><label>최소 재고</label><input id="invMinQty" type="number" step="0.01" placeholder="예: 1"></div>
       <button id="invAddBtn" class="btn btn-primary active" style="flex:0 0 auto; padding:10px 16px;">추가</button>
     </div>
     <div class="table-scroll">
       <table class="admin-table">
-        <thead><tr><th>이름</th><th>단위</th><th>최소 재고</th><th></th></tr></thead>
+        <thead><tr><th>이름</th><th>유형</th><th>단위</th><th>최소 재고</th><th></th></tr></thead>
         <tbody id="invItemRows"></tbody>
       </table>
     </div>
@@ -256,7 +277,7 @@
     <h2 style="margin:0 0 10px; font-size:15px; font-weight:700;">최근 재고 기록</h2>
     <div class="table-scroll">
       <table class="admin-table">
-        <thead><tr><th>날짜</th><th>항목</th><th>수량</th><th></th></tr></thead>
+        <thead><tr><th>날짜</th><th>항목</th><th>수량</th><th>입력자</th><th></th></tr></thead>
         <tbody id="invLogRows"></tbody>
       </table>
     </div>
@@ -1374,6 +1395,8 @@
   // ---------- 재고 (inventory) ----------
   var invItemsCache = [];
   var invLogsCache = [];
+  var invRequestsCache = [];
+  var INV_TYPE_LABEL = { count: '개수 세기', request: '구매요청만' };
 
   function invLatestLog(itemId) {
     var logs = invLogsCache.filter(function (l) { return l.itemId === itemId; });
@@ -1381,25 +1404,42 @@
     return logs.slice().sort(function (a, b) { return a.date < b.date ? 1 : -1; })[0];
   }
 
+  function invPendingRequest(itemId) {
+    return invRequestsCache.find(function (r) { return r.itemId === itemId && !r.resolved; }) || null;
+  }
+
   function invInputRowHtml(item) {
+    if (item.type === 'request') {
+      var pending = invPendingRequest(item.id);
+      var statusHtml = pending
+        ? '<span style="color:var(--danger, #e06c6c); font-weight:600;">🛒 요청됨 (' + pending.date + ')</span>'
+        : '<span style="color:var(--ok);">요청 없음</span>';
+      return '<tr data-id="' + item.id + '">' +
+        '<td>' + item.name + '</td>' +
+        '<td>' + item.unit + '</td>' +
+        '<td style="font-size:12px; color:var(--text-muted);">구매요청만</td>' +
+        '<td>' + statusHtml + '</td>' +
+        '<td><button class="btn-small" data-inv-request="' + item.id + '"' + (pending ? ' disabled' : '') + '>🛒 구매 요청</button></td>' +
+        '</tr>';
+    }
     var latest = invLatestLog(item.id);
     var latestText = latest ? (latest.date + ' · ' + latest.qty + item.unit) : '기록 없음';
     var low = latest ? latest.qty < item.minQty : true;
-    var statusHtml = low
+    var statusHtml2 = low
       ? '<span style="color:var(--danger, #e06c6c); font-weight:600;">🛒 구매 필요</span>'
       : '<span style="color:var(--ok);">충분</span>';
     return '<tr data-id="' + item.id + '">' +
       '<td>' + item.name + '</td>' +
       '<td>' + item.unit + '</td>' +
       '<td style="font-size:12px; color:var(--text-muted);">' + latestText + '</td>' +
-      '<td>' + statusHtml + '</td>' +
+      '<td>' + statusHtml2 + '</td>' +
       '<td><input type="number" step="0.01" data-inv-qty="' + item.id + '" placeholder="수량" style="width:90px"></td>' +
       '</tr>';
   }
 
   function itemRowHtml(item) {
     return '<tr data-id="' + item.id + '">' +
-      '<td>' + item.name + '</td><td>' + item.unit + '</td><td>' + item.minQty + '</td>' +
+      '<td>' + item.name + '</td><td>' + (INV_TYPE_LABEL[item.type] || item.type) + '</td><td>' + item.unit + '</td><td>' + item.minQty + '</td>' +
       '<td class="row-actions">' +
         '<button class="btn-small" data-edit-inv="' + item.id + '">수정</button>' +
         '<button class="btn-small btn-danger" data-del-inv="' + item.id + '">삭제</button>' +
@@ -1409,6 +1449,10 @@
   function itemEditRowHtml(item) {
     return '<tr data-id="' + item.id + '" class="menu-edit-row">' +
       '<td><input value="' + item.name.replace(/"/g, '&quot;') + '" data-f="name"></td>' +
+      '<td><select data-f="type" style="width:120px">' +
+        '<option value="count"' + (item.type === 'count' ? ' selected' : '') + '>개수 세기</option>' +
+        '<option value="request"' + (item.type === 'request' ? ' selected' : '') + '>구매요청만</option>' +
+      '</select></td>' +
       '<td><input value="' + item.unit.replace(/"/g, '&quot;') + '" data-f="unit" style="width:70px"></td>' +
       '<td><input type="number" step="0.01" value="' + item.minQty + '" data-f="minQty" style="width:80px"></td>' +
       '<td class="row-actions">' +
@@ -1423,29 +1467,69 @@
       '<td>' + log.date + '</td>' +
       '<td>' + (item ? item.name : log.itemId) + '</td>' +
       '<td>' + log.qty + (item ? item.unit : '') + '</td>' +
+      '<td>' + (log.author || '-') + '</td>' +
       '<td class="row-actions"><button class="btn-small btn-danger" data-del-log="' + log.id + '">삭제</button></td>' +
+      '</tr>';
+  }
+
+  function requestRowHtml(r) {
+    var item = invItemsCache.find(function (i) { return i.id === r.itemId; });
+    return '<tr data-id="' + r.id + '">' +
+      '<td>' + (item ? item.name : r.itemId) + '</td>' +
+      '<td>' + r.date + '</td>' +
+      '<td>' + (r.requestedBy || '-') + '</td>' +
+      '<td class="row-actions"><button class="btn-small" data-resolve-req="' + r.id + '">처리완료</button></td>' +
       '</tr>';
   }
 
   function renderInventoryInputTable() {
     document.getElementById('invInputRows').innerHTML =
       invItemsCache.map(invInputRowHtml).join('') || '<tr><td colspan="5">재고 항목이 없어요. 아래에서 추가해주세요.</td></tr>';
+    document.querySelectorAll('#invInputRows button[data-inv-request]').forEach(function (b) {
+      b.addEventListener('click', async function () {
+        var itemId = b.getAttribute('data-inv-request');
+        b.disabled = true;
+        await fetch('/api/inventory/submit', {
+          method: 'POST',
+          headers: { 'Content-Type': 'application/json' },
+          body: JSON.stringify({ date: window.cafeTime.ymd(new Date()), author: '관리자', requests: [itemId] })
+        });
+        loadInventory();
+      });
+    });
   }
 
   function renderInventoryItemTable() {
     document.getElementById('invItemRows').innerHTML =
-      invItemsCache.map(itemRowHtml).join('') || '<tr><td colspan="4">재고 항목 없음</td></tr>';
+      invItemsCache.map(itemRowHtml).join('') || '<tr><td colspan="5">재고 항목 없음</td></tr>';
     bindInventoryItemRowEvents();
   }
 
   function renderInventoryLogTable() {
     var recent = invLogsCache.slice().sort(function (a, b) { return a.date < b.date ? 1 : -1; }).slice(0, 30);
     document.getElementById('invLogRows').innerHTML =
-      recent.map(logRowHtml).join('') || '<tr><td colspan="4">재고 기록 없음</td></tr>';
+      recent.map(logRowHtml).join('') || '<tr><td colspan="5">재고 기록 없음</td></tr>';
     document.querySelectorAll('#invLogRows button[data-del-log]').forEach(function (b) {
       b.addEventListener('click', async function () {
         if (!confirm('이 재고 기록을 삭제할까요?')) return;
         await fetch('/api/admin/inventory/logs/' + b.getAttribute('data-del-log'), { method: 'DELETE' });
+        loadInventory();
+      });
+    });
+  }
+
+  function renderInventoryRequestTable() {
+    var pending = invRequestsCache.filter(function (r) { return !r.resolved; })
+      .sort(function (a, b) { return a.requestedAt < b.requestedAt ? 1 : -1; });
+    document.getElementById('invRequestRows').innerHTML =
+      pending.map(requestRowHtml).join('') || '<tr><td colspan="4">대기 중인 구매 요청 없음</td></tr>';
+    document.querySelectorAll('#invRequestRows button[data-resolve-req]').forEach(function (b) {
+      b.addEventListener('click', async function () {
+        await fetch('/api/admin/inventory/requests/' + b.getAttribute('data-resolve-req'), {
+          method: 'PUT',
+          headers: { 'Content-Type': 'application/json' },
+          body: JSON.stringify({ resolved: true })
+        });
         loadInventory();
       });
     });
@@ -1468,20 +1552,21 @@
         var id = b.getAttribute('data-save-inv');
         var tr = document.querySelector('#invItemRows tr[data-id="' + id + '"]');
         var name = tr.querySelector('[data-f="name"]').value.trim();
+        var type = tr.querySelector('[data-f="type"]').value;
         var unit = tr.querySelector('[data-f="unit"]').value.trim() || '개';
         var minQty = parseFloat(tr.querySelector('[data-f="minQty"]').value);
         if (!name) return alert('이름을 입력해주세요');
         await fetch('/api/admin/inventory/items/' + id, {
           method: 'PUT',
           headers: { 'Content-Type': 'application/json' },
-          body: JSON.stringify({ name: name, unit: unit, minQty: Number.isNaN(minQty) ? 0 : minQty })
+          body: JSON.stringify({ name: name, type: type, unit: unit, minQty: Number.isNaN(minQty) ? 0 : minQty })
         });
         loadInventory();
       });
     });
     document.querySelectorAll('#invItemRows button[data-del-inv]').forEach(function (b) {
       b.addEventListener('click', async function () {
-        if (!confirm('이 재고 항목을 삭제할까요? 지난 재고 기록도 같이 지워져요.')) return;
+        if (!confirm('이 재고 항목을 삭제할까요? 지난 재고 기록/구매 요청도 같이 지워져요.')) return;
         await fetch('/api/admin/inventory/items/' + b.getAttribute('data-del-inv'), { method: 'DELETE' });
         loadInventory();
       });
@@ -1491,50 +1576,54 @@
   async function loadInventory() {
     invItemsCache = await api('/api/admin/inventory/items');
     invLogsCache = await api('/api/admin/inventory/logs');
+    invRequestsCache = await api('/api/admin/inventory/requests');
     if (!document.getElementById('invLogDate').value) {
       document.getElementById('invLogDate').value = window.cafeTime.ymd(new Date());
     }
     renderInventoryInputTable();
     renderInventoryItemTable();
     renderInventoryLogTable();
+    renderInventoryRequestTable();
   }
 
   document.getElementById('invAddBtn').addEventListener('click', async function () {
     var name = document.getElementById('invName').value.trim();
+    var type = document.getElementById('invType').value;
     var unit = document.getElementById('invUnit').value.trim() || '개';
     var minQty = parseFloat(document.getElementById('invMinQty').value);
     if (!name) return alert('이름을 입력해주세요');
     await fetch('/api/admin/inventory/items', {
       method: 'POST',
       headers: { 'Content-Type': 'application/json' },
-      body: JSON.stringify({ name: name, unit: unit, minQty: Number.isNaN(minQty) ? 0 : minQty })
+      body: JSON.stringify({ name: name, type: type, unit: unit, minQty: Number.isNaN(minQty) ? 0 : minQty })
     });
     document.getElementById('invName').value = '';
     document.getElementById('invUnit').value = '';
     document.getElementById('invMinQty').value = '';
+    document.getElementById('invType').value = 'count';
     loadInventory();
   });
 
   document.getElementById('invSaveBtn').addEventListener('click', async function () {
     var date = document.getElementById('invLogDate').value;
     if (!date) return alert('날짜를 선택해주세요');
-    var entries = [];
+    var counts = [];
     document.querySelectorAll('#invInputRows input[data-inv-qty]').forEach(function (input) {
       if (input.value === '') return;
       var qty = parseFloat(input.value);
       if (Number.isNaN(qty)) return;
-      entries.push({ itemId: input.getAttribute('data-inv-qty'), qty: qty });
+      counts.push({ itemId: input.getAttribute('data-inv-qty'), qty: qty });
     });
-    if (entries.length === 0) return alert('입력한 수량이 없어요.');
-    var res = await fetch('/api/admin/inventory/logs', {
+    if (counts.length === 0) return alert('입력한 수량이 없어요. (구매요청만 항목은 버튼으로 바로 보내요)');
+    var res = await fetch('/api/inventory/submit', {
       method: 'POST',
       headers: { 'Content-Type': 'application/json' },
-      body: JSON.stringify({ date: date, entries: entries })
+      body: JSON.stringify({ date: date, author: '관리자', counts: counts })
     });
     var data = await res.json();
     var resultEl = document.getElementById('invSaveResult');
     if (res.ok) {
-      resultEl.textContent = '✓ ' + data.saved + '개 항목 저장됨 (' + date + ')';
+      resultEl.textContent = '✓ ' + data.savedCounts + '개 항목 저장됨 (' + date + ')';
       document.querySelectorAll('#invInputRows input[data-inv-qty]').forEach(function (input) { input.value = ''; });
       loadInventory();
     } else {

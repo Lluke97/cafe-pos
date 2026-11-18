@@ -267,6 +267,77 @@ app.post('/api/expenses', (req, res) => {
   res.status(201).json(entry);
 });
 
+// ---------------- 재고 (inventory) — 직원 누구나 입력 가능, 관리 전용 아님 ----------------
+// 항목 자체를 추가/수정/삭제하는 건 관리자만(아래 /api/admin/inventory/*),
+// 하지만 "오늘 재고 몇 개 남았는지" 적어 넣는 건 관리자가 아니어도 할 수
+// 있어야 해서(entry.html의 지출 입력과 같은 원칙), 조회/제출 API는 관리자
+// 게이트 위쪽에 둔다.
+app.get('/api/inventory/items', (req, res) => res.json(db.getInventoryItems()));
+app.get('/api/inventory/logs', (req, res) => {
+  let logs = db.getInventoryLogs();
+  if (req.query.itemId) logs = logs.filter((l) => l.itemId === req.query.itemId);
+  res.json(logs);
+});
+app.get('/api/inventory/requests', (req, res) => {
+  let requests = db.getInventoryRequests();
+  if (req.query.resolved === 'false') requests = requests.filter((r) => !r.resolved);
+  if (req.query.resolved === 'true') requests = requests.filter((r) => r.resolved);
+  res.json(requests);
+});
+
+// 한 번 제출로 count형 항목의 수량들과 request형 항목의 구매 요청들을
+// 같이 보낼 수 있게 묶었다 — 재고 입력 화면에서 버튼 하나로 끝나도록.
+app.post('/api/inventory/submit', (req, res) => {
+  const { date, author, counts, requests, note } = req.body || {};
+  const theDate = date || todayStr();
+  const items = db.getInventoryItems();
+  let savedCounts = 0;
+  let savedRequests = 0;
+
+  if (Array.isArray(counts) && counts.length) {
+    const logs = db.getInventoryLogs();
+    const now = new Date().toISOString();
+    counts.forEach((e) => {
+      if (!e || typeof e.itemId !== 'string' || typeof e.qty !== 'number' || Number.isNaN(e.qty)) return;
+      const idx = logs.findIndex((l) => l.itemId === e.itemId && l.date === theDate);
+      if (idx !== -1) {
+        logs[idx].qty = e.qty;
+        logs[idx].author = author || logs[idx].author;
+        logs[idx].updatedAt = now;
+      } else {
+        logs.push({ id: uid(), itemId: e.itemId, date: theDate, qty: e.qty, author: author || '', note: note || '', createdAt: now });
+      }
+      savedCounts++;
+    });
+    db.saveInventoryLogs(logs);
+  }
+
+  if (Array.isArray(requests) && requests.length) {
+    const reqList = db.getInventoryRequests();
+    const now = new Date().toISOString();
+    requests.forEach((itemId) => {
+      if (typeof itemId !== 'string') return;
+      if (!items.some((i) => i.id === itemId)) return;
+      // 이미 처리 안 된 요청이 그 항목에 있으면 또 쌓지 않고, 누가 다시
+      // 요청했는지/언제 요청했는지만 최신으로 갱신한다.
+      const existing = reqList.find((r) => r.itemId === itemId && !r.resolved);
+      if (existing) {
+        existing.requestedAt = now;
+        existing.requestedBy = author || existing.requestedBy;
+      } else {
+        reqList.push({ id: uid(), itemId, date: theDate, requestedBy: author || '', note: note || '', resolved: false, requestedAt: now });
+      }
+      savedRequests++;
+    });
+    db.saveInventoryRequests(reqList);
+  }
+
+  if (savedCounts === 0 && savedRequests === 0) {
+    return res.status(400).json({ error: '입력한 수량이나 구매 요청이 없어요.' });
+  }
+  res.json({ ok: true, savedCounts, savedRequests });
+});
+
 // ---------------- Admin-only API ----------------
 app.use('/api/admin', requireAdmin);
 
@@ -318,11 +389,16 @@ app.delete('/api/admin/menu/:id', (req, res) => {
 // ---------------- 재고 (inventory) ----------------
 app.get('/api/admin/inventory/items', (req, res) => res.json(db.getInventoryItems()));
 
+const INVENTORY_TYPES = ['count', 'request'];
+
 app.post('/api/admin/inventory/items', (req, res) => {
-  const { name, unit, minQty } = req.body || {};
+  const { name, unit, minQty, type } = req.body || {};
   if (!name) return res.status(400).json({ error: 'name is required' });
+  if (type !== undefined && !INVENTORY_TYPES.includes(type)) {
+    return res.status(400).json({ error: `type must be one of ${INVENTORY_TYPES.join('|')}` });
+  }
   const items = db.getInventoryItems();
-  const item = { id: uid(), name, unit: unit || '개', minQty: typeof minQty === 'number' ? minQty : 0 };
+  const item = { id: uid(), name, unit: unit || '개', minQty: typeof minQty === 'number' ? minQty : 0, type: type || 'count' };
   items.push(item);
   db.saveInventoryItems(items);
   res.status(201).json(item);
@@ -332,10 +408,14 @@ app.put('/api/admin/inventory/items/:id', (req, res) => {
   const items = db.getInventoryItems();
   const idx = items.findIndex((i) => i.id === req.params.id);
   if (idx === -1) return res.status(404).json({ error: 'not found' });
-  const { name, unit, minQty } = req.body || {};
+  const { name, unit, minQty, type } = req.body || {};
+  if (type !== undefined && !INVENTORY_TYPES.includes(type)) {
+    return res.status(400).json({ error: `type must be one of ${INVENTORY_TYPES.join('|')}` });
+  }
   if (name !== undefined) items[idx].name = name;
   if (unit !== undefined) items[idx].unit = unit;
   if (minQty !== undefined) items[idx].minQty = minQty;
+  if (type !== undefined) items[idx].type = type;
   db.saveInventoryItems(items);
   res.json(items[idx]);
 });
@@ -344,10 +424,12 @@ app.delete('/api/admin/inventory/items/:id', (req, res) => {
   const items = db.getInventoryItems();
   const next = items.filter((i) => i.id !== req.params.id);
   db.saveInventoryItems(next);
-  // 그 항목의 지난 재고 기록도 같이 지워서, 삭제된 항목이 기록에 고아로
-  // 남아 있다가 나중에 혼란을 주지 않게 한다.
+  // 그 항목의 지난 재고 기록/구매 요청도 같이 지워서, 삭제된 항목이
+  // 고아로 남아 있다가 나중에 혼란을 주지 않게 한다.
   const logs = db.getInventoryLogs().filter((l) => l.itemId !== req.params.id);
   db.saveInventoryLogs(logs);
+  const requests = db.getInventoryRequests().filter((r) => r.itemId !== req.params.id);
+  db.saveInventoryRequests(requests);
   res.json({ ok: true });
 });
 
@@ -389,6 +471,33 @@ app.delete('/api/admin/inventory/logs/:id', (req, res) => {
   const logs = db.getInventoryLogs();
   const next = logs.filter((l) => l.id !== req.params.id);
   db.saveInventoryLogs(next);
+  res.json({ ok: true });
+});
+
+app.get('/api/admin/inventory/requests', (req, res) => {
+  let requests = db.getInventoryRequests();
+  if (req.query.resolved === 'false') requests = requests.filter((r) => !r.resolved);
+  if (req.query.resolved === 'true') requests = requests.filter((r) => r.resolved);
+  res.json(requests);
+});
+
+// 장 보러 가서 사 왔으면 처리완료로 닫는다. resolved: false로 다시 열 수도
+// 있게(잘못 눌렀을 때 되돌리기용).
+app.put('/api/admin/inventory/requests/:id', (req, res) => {
+  const requests = db.getInventoryRequests();
+  const idx = requests.findIndex((r) => r.id === req.params.id);
+  if (idx === -1) return res.status(404).json({ error: 'not found' });
+  const { resolved } = req.body || {};
+  requests[idx].resolved = !!resolved;
+  requests[idx].resolvedAt = resolved ? new Date().toISOString() : null;
+  db.saveInventoryRequests(requests);
+  res.json(requests[idx]);
+});
+
+app.delete('/api/admin/inventory/requests/:id', (req, res) => {
+  const requests = db.getInventoryRequests();
+  const next = requests.filter((r) => r.id !== req.params.id);
+  db.saveInventoryRequests(next);
   res.json({ ok: true });
 });
 
