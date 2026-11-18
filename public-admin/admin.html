@@ -261,6 +261,7 @@
           <option value="request">구매요청만 (컵·빨대처럼 세기 번거로운 것)</option>
         </select>
       </div>
+      <div class="field"><label>용량 (선택)</label><input id="invPackSize" placeholder="예: 500 (단위 g면 500g로 표시)"></div>
       <div class="field">
         <label>단위</label>
         <select id="invUnit">
@@ -278,7 +279,6 @@
         </select>
         <input id="invUnitCustom" placeholder="단위 입력" style="margin-top:6px; display:none;">
       </div>
-      <div class="field"><label>용량 (선택)</label><input id="invPackSize" placeholder="예: 500 (단위 g면 500g로 표시)"></div>
       <div class="field"><label>최소 재고</label><input id="invMinQty" type="number" step="0.01" placeholder="예: 1"></div>
       <button id="invAddBtn" class="btn btn-primary active" style="flex:0 0 auto; padding:10px 16px;">추가</button>
     </div>
@@ -1492,9 +1492,9 @@
         '<option value="request"' + (item.type === 'request' ? ' selected' : '') + '>구매요청만</option>' +
       '</select></td>' +
       '<td>' +
-        '<select data-f="unit" style="width:90px">' + invUnitOptionsHtml(item.unit) + '</select>' +
+        '<input data-f="packSize" value="' + (item.packSize || '').replace(/"/g, '&quot;') + '" placeholder="용량(선택, 예:500)" style="width:120px;">' +
+        '<select data-f="unit" style="width:90px; margin-top:4px;">' + invUnitOptionsHtml(item.unit) + '</select>' +
         '<input data-f="unitCustom" value="' + (INV_UNIT_OPTIONS.indexOf(item.unit) === -1 ? item.unit.replace(/"/g, '&quot;') : '') + '" placeholder="단위" style="width:90px; margin-top:4px; display:none;">' +
-        '<input data-f="packSize" value="' + (item.packSize || '').replace(/"/g, '&quot;') + '" placeholder="용량(선택, 예:500)" style="width:120px; margin-top:4px;">' +
       '</td>' +
       '<td><input type="number" step="0.01" value="' + item.minQty + '" data-f="minQty" style="width:80px"></td>' +
       '<td class="row-actions">' +
