@@ -167,13 +167,17 @@
     var queue = loadOfflineQueue();
     if (!navigator.onLine) {
       badge.textContent = queue.length > 0 ? '📴 오프라인 · 대기 ' + queue.length + '건' : '📴 오프라인';
-      badge.style.display = '';
+      badge.style.color = '#e06c6c';
     } else if (queue.length > 0) {
       badge.textContent = '🔄 전송 대기 ' + queue.length + '건';
-      badge.style.display = '';
+      badge.style.color = '#e06c6c';
     } else {
-      badge.style.display = 'none';
+      // 평소(온라인, 대기 중인 주문 없음)에도 항상 표시 — 기능이 켜져있다는
+      // 걸 늘 볼 수 있게. 배지 자체를 숨기지 않는다.
+      badge.textContent = '🟢 온라인';
+      badge.style.color = '';
     }
+    badge.style.display = '';
   }
 
   var syncingOfflineQueue = false;
@@ -213,7 +217,7 @@
 
   window.addEventListener('online', function () { updateOfflineBadge(); syncOfflineQueue(); });
   window.addEventListener('offline', updateOfflineBadge);
-  setInterval(function () { if (navigator.onLine) syncOfflineQueue(); }, 15000);
+  setInterval(function () { if (navigator.onLine) syncOfflineQueue(); }, 5000);
   var cashTendered = 0;
 
   function fmt(n) {
