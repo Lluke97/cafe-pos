@@ -97,7 +97,7 @@
   }
 
   function unitDisplay(item) {
-    return item.unit + (item.packSize ? ' (' + item.packSize + ')' : '');
+    return item.packSize ? (item.packSize + item.unit) : item.unit;
   }
 
   function itemHtml(item) {
@@ -116,7 +116,7 @@
     }
     var latest = latestLog(item.id);
     var low = latest ? latest.qty < item.minQty : true;
-    var statusText = latest ? (latest.date + ' 기준 ' + latest.qty + item.unit) : '기록 없음';
+    var statusText = latest ? (latest.date + ' 기준 ' + latest.qty + ' ' + unitDisplay(item)) : '기록 없음';
     return '<div class="inv-item" data-id="' + item.id + '">' +
       '<div class="top"><span class="name">' + item.name + ' (' + unitDisplay(item) + ')</span>' +
         '<input type="number" step="0.01" data-qty="' + item.id + '" placeholder="수량(' + item.unit + ')">' +

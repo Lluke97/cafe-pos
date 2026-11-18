@@ -278,12 +278,12 @@
         </select>
         <input id="invUnitCustom" placeholder="단위 입력" style="margin-top:6px; display:none;">
       </div>
-      <div class="field"><label>용량 (선택)</label><input id="invPackSize" placeholder="예: 300g, 1L"></div>
+      <div class="field"><label>용량 (선택)</label><input id="invPackSize" placeholder="예: 500 (단위 g면 500g로 표시)"></div>
       <div class="field"><label>최소 재고</label><input id="invMinQty" type="number" step="0.01" placeholder="예: 1"></div>
       <button id="invAddBtn" class="btn btn-primary active" style="flex:0 0 auto; padding:10px 16px;">추가</button>
     </div>
     <div style="font-size:11px; color:var(--text-muted); margin:-4px 0 10px;">
-      "용량"은 단위 하나가 실제로 얼마인지 보여주는 메모예요 (예: 원두 1봉지 = 300g). 재고는 여전히 "봉지" 개수로 세요 — 300g짜리 4봉지를 1.2kg으로 바꿔 적지 않아도 돼요.
+      "용량"은 단위 앞에 붙는 숫자예요 (단위 g + 용량 500 → "500g"로 표시). 재고는 여전히 세는 개수로 적어요 — 500g짜리 4개 샀으면 "4"라고 적으면 돼요, 2kg으로 환산해서 적지 않아도 돼요.
     </div>
     <div class="table-scroll">
       <table class="admin-table">
@@ -1457,7 +1457,7 @@
         '</tr>';
     }
     var latest = invLatestLog(item.id);
-    var latestText = latest ? (latest.date + ' · ' + latest.qty + item.unit) : '기록 없음';
+    var latestText = latest ? (latest.date + ' · ' + latest.qty + ' ' + invUnitDisplay(item)) : '기록 없음';
     var low = latest ? latest.qty < item.minQty : true;
     var statusHtml2 = low
       ? '<span style="color:var(--danger, #e06c6c); font-weight:600;">🛒 구매 필요</span>'
@@ -1472,7 +1472,7 @@
   }
 
   function invUnitDisplay(item) {
-    return item.unit + (item.packSize ? ' (' + item.packSize + ')' : '');
+    return item.packSize ? (item.packSize + item.unit) : item.unit;
   }
 
   function invItemRowHtml(item) {
@@ -1494,7 +1494,7 @@
       '<td>' +
         '<select data-f="unit" style="width:90px">' + invUnitOptionsHtml(item.unit) + '</select>' +
         '<input data-f="unitCustom" value="' + (INV_UNIT_OPTIONS.indexOf(item.unit) === -1 ? item.unit.replace(/"/g, '&quot;') : '') + '" placeholder="단위" style="width:90px; margin-top:4px; display:none;">' +
-        '<input data-f="packSize" value="' + (item.packSize || '').replace(/"/g, '&quot;') + '" placeholder="용량(선택, 예:300g)" style="width:120px; margin-top:4px;">' +
+        '<input data-f="packSize" value="' + (item.packSize || '').replace(/"/g, '&quot;') + '" placeholder="용량(선택, 예:500)" style="width:120px; margin-top:4px;">' +
       '</td>' +
       '<td><input type="number" step="0.01" value="' + item.minQty + '" data-f="minQty" style="width:80px"></td>' +
       '<td class="row-actions">' +
@@ -1508,7 +1508,7 @@
     return '<tr data-id="' + log.id + '">' +
       '<td>' + log.date + '</td>' +
       '<td>' + (item ? item.name : log.itemId) + '</td>' +
-      '<td>' + log.qty + (item ? item.unit : '') + (item && item.packSize ? ' <span style="font-size:11px; color:var(--text-muted);">(' + item.packSize + '/' + item.unit + ')</span>' : '') + '</td>' +
+      '<td>' + log.qty + ' ' + (item ? invUnitDisplay(item) : '') + '</td>' +
       '<td>' + (log.author || '-') + '</td>' +
       '<td class="row-actions">' +
         '<button class="btn-small" data-edit-log="' + log.id + '">수정</button>' +
