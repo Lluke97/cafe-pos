@@ -1561,51 +1561,89 @@
   function renderInventoryItemTable() {
     document.getElementById('invItemRows').innerHTML =
       invItemsCache.map(invItemRowHtml).join('') || '<tr><td colspan="5">재고 항목 없음</td></tr>';
-    bindInventoryItemRowEvents();
   }
 
   function renderInventoryLogTable() {
     var recent = invLogsCache.slice().sort(function (a, b) { return a.date < b.date ? 1 : -1; }).slice(0, 30);
     document.getElementById('invLogRows').innerHTML =
       recent.map(logRowHtml).join('') || '<tr><td colspan="5">재고 기록 없음</td></tr>';
-    bindInventoryLogRowEvents();
   }
 
-  function bindInventoryLogRowEvents() {
-    document.querySelectorAll('#invLogRows button[data-edit-log]').forEach(function (b) {
-      b.addEventListener('click', function () {
-        var id = b.getAttribute('data-edit-log');
+  // 아래 두 테이블(재고 항목/최근 기록)은 "수정" 누른 그 줄만 outerHTML로
+  // 바꿔치기하고 전체를 다시 그리지 않는다 — 그래서 버튼마다 매번 새
+  // addEventListener를 붙이면(이전 방식) 손 안 댄 다른 줄 버튼에 리스너가
+  // 계속 겹겹이 쌓인다(수정 두세 번 누르면 삭제 확인창이 여러 번 뜨는 식).
+  // 테이블 컨테이너 하나에 한 번만 리스너를 달아두는 이벤트 위임 방식으로
+  // 바꿔서, 줄을 몇 번을 다시 그려도 리스너가 늘어나지 않게 한다.
+  function setupInvItemRowDelegation() {
+    document.getElementById('invItemRows').addEventListener('click', function (e) {
+      var editBtn = e.target.closest('button[data-edit-inv]');
+      if (editBtn) {
+        var id = editBtn.getAttribute('data-edit-inv');
+        var item = invItemsCache.find(function (x) { return x.id === id; });
+        document.querySelector('#invItemRows tr[data-id="' + id + '"]').outerHTML = invItemEditRowHtml(item);
+        var newTr = document.querySelector('#invItemRows tr[data-id="' + id + '"]');
+        bindUnitSelectToggle(newTr.querySelector('[data-f="unit"]'), newTr.querySelector('[data-f="unitCustom"]'));
+        return;
+      }
+      if (e.target.closest('button[data-cancel-inv]')) { renderInventoryItemTable(); return; }
+      var saveBtn = e.target.closest('button[data-save-inv]');
+      if (saveBtn) {
+        var saveId = saveBtn.getAttribute('data-save-inv');
+        var tr = document.querySelector('#invItemRows tr[data-id="' + saveId + '"]');
+        var name = tr.querySelector('[data-f="name"]').value.trim();
+        var type = tr.querySelector('[data-f="type"]').value;
+        var unitSel = tr.querySelector('[data-f="unit"]').value;
+        var unit = (unitSel === 'custom' ? tr.querySelector('[data-f="unitCustom"]').value.trim() : unitSel) || '개';
+        var packSize = tr.querySelector('[data-f="packSize"]').value.trim();
+        var minQty = parseInt(tr.querySelector('[data-f="minQty"]').value, 10);
+        if (!name) { alert('이름을 입력해주세요'); return; }
+        fetch('/api/admin/inventory/items/' + saveId, {
+          method: 'PUT',
+          headers: { 'Content-Type': 'application/json' },
+          body: JSON.stringify({ name: name, type: type, unit: unit, packSize: packSize, minQty: Number.isNaN(minQty) ? 0 : minQty })
+        }).then(loadInventory);
+        return;
+      }
+      var delBtn = e.target.closest('button[data-del-inv]');
+      if (delBtn) {
+        if (!confirm('이 재고 항목을 삭제할까요? 지난 재고 기록/구매 요청도 같이 지워져요.')) return;
+        fetch('/api/admin/inventory/items/' + delBtn.getAttribute('data-del-inv'), { method: 'DELETE' }).then(loadInventory);
+      }
+    });
+  }
+
+  function setupInvLogRowDelegation() {
+    document.getElementById('invLogRows').addEventListener('click', function (e) {
+      var editBtn = e.target.closest('button[data-edit-log]');
+      if (editBtn) {
+        var id = editBtn.getAttribute('data-edit-log');
         var log = invLogsCache.find(function (x) { return x.id === id; });
         document.querySelector('#invLogRows tr[data-id="' + id + '"]').outerHTML = logEditRowHtml(log);
-        bindInventoryLogRowEvents();
-      });
-    });
-    document.querySelectorAll('#invLogRows button[data-cancel-log]').forEach(function (b) {
-      b.addEventListener('click', renderInventoryLogTable);
-    });
-    document.querySelectorAll('#invLogRows button[data-save-log]').forEach(function (b) {
-      b.addEventListener('click', async function () {
-        var id = b.getAttribute('data-save-log');
-        var tr = document.querySelector('#invLogRows tr[data-id="' + id + '"]');
+        return;
+      }
+      if (e.target.closest('button[data-cancel-log]')) { renderInventoryLogTable(); return; }
+      var saveBtn = e.target.closest('button[data-save-log]');
+      if (saveBtn) {
+        var saveId = saveBtn.getAttribute('data-save-log');
+        var tr = document.querySelector('#invLogRows tr[data-id="' + saveId + '"]');
         var date = tr.querySelector('[data-f="date"]').value;
         var qty = parseInt(tr.querySelector('[data-f="qty"]').value, 10);
         var author = tr.querySelector('[data-f="author"]').value.trim();
-        if (!date) return alert('날짜를 입력해주세요');
-        if (Number.isNaN(qty)) return alert('수량을 숫자로 입력해주세요 (소숫점 없이)');
-        await fetch('/api/admin/inventory/logs/' + id, {
+        if (!date) { alert('날짜를 입력해주세요'); return; }
+        if (Number.isNaN(qty)) { alert('수량을 숫자로 입력해주세요 (소숫점 없이)'); return; }
+        fetch('/api/admin/inventory/logs/' + saveId, {
           method: 'PUT',
           headers: { 'Content-Type': 'application/json' },
           body: JSON.stringify({ date: date, qty: qty, author: author })
-        });
-        loadInventory();
-      });
-    });
-    document.querySelectorAll('#invLogRows button[data-del-log]').forEach(function (b) {
-      b.addEventListener('click', async function () {
+        }).then(loadInventory);
+        return;
+      }
+      var delBtn = e.target.closest('button[data-del-log]');
+      if (delBtn) {
         if (!confirm('이 재고 기록을 삭제할까요?')) return;
-        await fetch('/api/admin/inventory/logs/' + b.getAttribute('data-del-log'), { method: 'DELETE' });
-        loadInventory();
-      });
+        fetch('/api/admin/inventory/logs/' + delBtn.getAttribute('data-del-log'), { method: 'DELETE' }).then(loadInventory);
+      }
     });
   }
 
@@ -1628,48 +1666,6 @@
       b.addEventListener('click', async function () {
         if (!confirm('이 구매 요청을 삭제할까요? (잘못 보낸 요청 취소)')) return;
         await fetch('/api/admin/inventory/requests/' + b.getAttribute('data-del-req'), { method: 'DELETE' });
-        loadInventory();
-      });
-    });
-  }
-
-  function bindInventoryItemRowEvents() {
-    document.querySelectorAll('#invItemRows button[data-edit-inv]').forEach(function (b) {
-      b.addEventListener('click', function () {
-        var id = b.getAttribute('data-edit-inv');
-        var item = invItemsCache.find(function (x) { return x.id === id; });
-        document.querySelector('#invItemRows tr[data-id="' + id + '"]').outerHTML = invItemEditRowHtml(item);
-        var newTr = document.querySelector('#invItemRows tr[data-id="' + id + '"]');
-        bindUnitSelectToggle(newTr.querySelector('[data-f="unit"]'), newTr.querySelector('[data-f="unitCustom"]'));
-        bindInventoryItemRowEvents();
-      });
-    });
-    document.querySelectorAll('#invItemRows button[data-cancel-inv]').forEach(function (b) {
-      b.addEventListener('click', renderInventoryItemTable);
-    });
-    document.querySelectorAll('#invItemRows button[data-save-inv]').forEach(function (b) {
-      b.addEventListener('click', async function () {
-        var id = b.getAttribute('data-save-inv');
-        var tr = document.querySelector('#invItemRows tr[data-id="' + id + '"]');
-        var name = tr.querySelector('[data-f="name"]').value.trim();
-        var type = tr.querySelector('[data-f="type"]').value;
-        var unitSel = tr.querySelector('[data-f="unit"]').value;
-        var unit = (unitSel === 'custom' ? tr.querySelector('[data-f="unitCustom"]').value.trim() : unitSel) || '개';
-        var packSize = tr.querySelector('[data-f="packSize"]').value.trim();
-        var minQty = parseInt(tr.querySelector('[data-f="minQty"]').value, 10);
-        if (!name) return alert('이름을 입력해주세요');
-        await fetch('/api/admin/inventory/items/' + id, {
-          method: 'PUT',
-          headers: { 'Content-Type': 'application/json' },
-          body: JSON.stringify({ name: name, type: type, unit: unit, packSize: packSize, minQty: Number.isNaN(minQty) ? 0 : minQty })
-        });
-        loadInventory();
-      });
-    });
-    document.querySelectorAll('#invItemRows button[data-del-inv]').forEach(function (b) {
-      b.addEventListener('click', async function () {
-        if (!confirm('이 재고 항목을 삭제할까요? 지난 재고 기록/구매 요청도 같이 지워져요.')) return;
-        await fetch('/api/admin/inventory/items/' + b.getAttribute('data-del-inv'), { method: 'DELETE' });
         loadInventory();
       });
     });
@@ -1746,6 +1742,8 @@
   loadOrders();
   loadExpenses();
   loadMenu();
+  setupInvItemRowDelegation();
+  setupInvLogRowDelegation();
   loadInventory();
 </script>
 </body>
