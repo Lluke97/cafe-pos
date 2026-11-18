@@ -57,16 +57,21 @@ const DEFAULT_SETTINGS = { settlement: { at: null, date: null, actualCash: 0, ac
 // type: 'count'(숫자로 세는 항목 — 원두/우유처럼 정확한 수량을 셀 수 있는
 // 것) 또는 'request'(컵/빨대/휴지처럼 낱개로 세기 번거로운 소모품 — 수량
 // 대신 그냥 "구매 요청"만 보낼 수 있다).
+//
+// packSize: "단위 하나가 실제로 얼마인지"를 보여주는 선택 텍스트(예: 원두
+// 1봉지 = "300g"). 재고는 여전히 "봉지" 개수로 세고 기록하며 — 300g짜리
+// 4봉지를 "1.2kg"으로 환산해서 적지 않는다 — packSize는 그 봉지 하나의
+// 용량을 옆에 보여주기만 하는 메모다.
 const DEFAULT_INVENTORY_ITEMS = [
-  { id: 'inv_coffeebean', name: '원두',     unit: 'kg', minQty: 1,  type: 'count' },
-  { id: 'inv_milk',       name: '우유',     unit: 'L',  minQty: 2,  type: 'count' },
-  { id: 'inv_omija',      name: '오미자',   unit: '병', minQty: 1,  type: 'count' },
-  { id: 'inv_juice',      name: '주스',     unit: '병', minQty: 1,  type: 'count' },
-  { id: 'inv_ice',        name: '얼음',     unit: '봉', minQty: 2,  type: 'count' },
-  { id: 'inv_icecup',     name: '아이스컵', unit: '개', minQty: 20, type: 'request' },
-  { id: 'inv_hotcup',     name: '핫 컵',    unit: '개', minQty: 20, type: 'request' },
-  { id: 'inv_straw',      name: '빨대',     unit: '개', minQty: 30, type: 'request' },
-  { id: 'inv_tissue',     name: '휴지',     unit: '개', minQty: 1,  type: 'request' }
+  { id: 'inv_coffeebean', name: '원두',     unit: 'kg', packSize: '', minQty: 1,  type: 'count' },
+  { id: 'inv_milk',       name: '우유',     unit: 'L',  packSize: '', minQty: 2,  type: 'count' },
+  { id: 'inv_omija',      name: '오미자',   unit: '병', packSize: '', minQty: 1,  type: 'count' },
+  { id: 'inv_juice',      name: '주스',     unit: '병', packSize: '', minQty: 1,  type: 'count' },
+  { id: 'inv_ice',        name: '얼음',     unit: '봉', packSize: '', minQty: 2,  type: 'count' },
+  { id: 'inv_icecup',     name: '아이스컵', unit: '개', packSize: '', minQty: 20, type: 'request' },
+  { id: 'inv_hotcup',     name: '핫 컵',    unit: '개', packSize: '', minQty: 20, type: 'request' },
+  { id: 'inv_straw',      name: '빨대',     unit: '개', packSize: '', minQty: 30, type: 'request' },
+  { id: 'inv_tissue',     name: '휴지',     unit: '개', packSize: '', minQty: 1,  type: 'request' }
 ];
 
 // 이름으로 보고 request형이어야 할 것 같은 항목들 — 이미 저장된(type이 없는
@@ -92,6 +97,10 @@ module.exports = {
     items.forEach((it) => {
       if (!it.type) {
         it.type = REQUEST_TYPE_NAMES.includes(it.name) ? 'request' : 'count';
+        changed = true;
+      }
+      if (it.packSize === undefined) {
+        it.packSize = '';
         changed = true;
       }
     });

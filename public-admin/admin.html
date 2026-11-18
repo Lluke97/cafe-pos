@@ -278,8 +278,12 @@
         </select>
         <input id="invUnitCustom" placeholder="단위 입력" style="margin-top:6px; display:none;">
       </div>
+      <div class="field"><label>용량 (선택)</label><input id="invPackSize" placeholder="예: 300g, 1L"></div>
       <div class="field"><label>최소 재고</label><input id="invMinQty" type="number" step="0.01" placeholder="예: 1"></div>
       <button id="invAddBtn" class="btn btn-primary active" style="flex:0 0 auto; padding:10px 16px;">추가</button>
+    </div>
+    <div style="font-size:11px; color:var(--text-muted); margin:-4px 0 10px;">
+      "용량"은 단위 하나가 실제로 얼마인지 보여주는 메모예요 (예: 원두 1봉지 = 300g). 재고는 여전히 "봉지" 개수로 세요 — 300g짜리 4봉지를 1.2kg으로 바꿔 적지 않아도 돼요.
     </div>
     <div class="table-scroll">
       <table class="admin-table">
@@ -1446,7 +1450,7 @@
         : '<span style="color:var(--ok);">요청 없음</span>';
       return '<tr data-id="' + item.id + '">' +
         '<td>' + item.name + '</td>' +
-        '<td>' + item.unit + '</td>' +
+        '<td>' + invUnitDisplay(item) + '</td>' +
         '<td style="font-size:12px; color:var(--text-muted);">구매요청만</td>' +
         '<td>' + statusHtml + '</td>' +
         '<td><button class="btn-small" data-inv-request="' + item.id + '"' + (pending ? ' disabled' : '') + '>🛒 구매 요청</button></td>' +
@@ -1460,23 +1464,27 @@
       : '<span style="color:var(--ok);">충분</span>';
     return '<tr data-id="' + item.id + '">' +
       '<td>' + item.name + '</td>' +
-      '<td>' + item.unit + '</td>' +
+      '<td>' + invUnitDisplay(item) + '</td>' +
       '<td style="font-size:12px; color:var(--text-muted);">' + latestText + '</td>' +
       '<td>' + statusHtml2 + '</td>' +
-      '<td><input type="number" step="0.01" data-inv-qty="' + item.id + '" placeholder="수량" style="width:90px"></td>' +
+      '<td><input type="number" step="0.01" data-inv-qty="' + item.id + '" placeholder="수량(' + item.unit + ')" style="width:90px"></td>' +
       '</tr>';
   }
 
-  function itemRowHtml(item) {
+  function invUnitDisplay(item) {
+    return item.unit + (item.packSize ? ' (' + item.packSize + ')' : '');
+  }
+
+  function invItemRowHtml(item) {
     return '<tr data-id="' + item.id + '">' +
-      '<td>' + item.name + '</td><td>' + (INV_TYPE_LABEL[item.type] || item.type) + '</td><td>' + item.unit + '</td><td>' + item.minQty + '</td>' +
+      '<td>' + item.name + '</td><td>' + (INV_TYPE_LABEL[item.type] || item.type) + '</td><td>' + invUnitDisplay(item) + '</td><td>' + item.minQty + '</td>' +
       '<td class="row-actions">' +
         '<button class="btn-small" data-edit-inv="' + item.id + '">수정</button>' +
         '<button class="btn-small btn-danger" data-del-inv="' + item.id + '">삭제</button>' +
       '</td></tr>';
   }
 
-  function itemEditRowHtml(item) {
+  function invItemEditRowHtml(item) {
     return '<tr data-id="' + item.id + '" class="menu-edit-row">' +
       '<td><input value="' + item.name.replace(/"/g, '&quot;') + '" data-f="name"></td>' +
       '<td><select data-f="type" style="width:120px">' +
@@ -1486,6 +1494,7 @@
       '<td>' +
         '<select data-f="unit" style="width:90px">' + invUnitOptionsHtml(item.unit) + '</select>' +
         '<input data-f="unitCustom" value="' + (INV_UNIT_OPTIONS.indexOf(item.unit) === -1 ? item.unit.replace(/"/g, '&quot;') : '') + '" placeholder="단위" style="width:90px; margin-top:4px; display:none;">' +
+        '<input data-f="packSize" value="' + (item.packSize || '').replace(/"/g, '&quot;') + '" placeholder="용량(선택, 예:300g)" style="width:120px; margin-top:4px;">' +
       '</td>' +
       '<td><input type="number" step="0.01" value="' + item.minQty + '" data-f="minQty" style="width:80px"></td>' +
       '<td class="row-actions">' +
@@ -1499,7 +1508,7 @@
     return '<tr data-id="' + log.id + '">' +
       '<td>' + log.date + '</td>' +
       '<td>' + (item ? item.name : log.itemId) + '</td>' +
-      '<td>' + log.qty + (item ? item.unit : '') + '</td>' +
+      '<td>' + log.qty + (item ? item.unit : '') + (item && item.packSize ? ' <span style="font-size:11px; color:var(--text-muted);">(' + item.packSize + '/' + item.unit + ')</span>' : '') + '</td>' +
       '<td>' + (log.author || '-') + '</td>' +
       '<td class="row-actions">' +
         '<button class="btn-small" data-edit-log="' + log.id + '">수정</button>' +
@@ -1512,7 +1521,7 @@
     return '<tr data-id="' + log.id + '" class="menu-edit-row">' +
       '<td><input type="date" value="' + log.date + '" data-f="date" style="width:120px"></td>' +
       '<td>' + (item ? item.name : log.itemId) + '</td>' +
-      '<td><input type="number" step="0.01" value="' + log.qty + '" data-f="qty" style="width:80px">' + (item ? item.unit : '') + '</td>' +
+      '<td><input type="number" step="0.01" value="' + log.qty + '" data-f="qty" style="width:80px">' + (item ? invUnitDisplay(item) : '') + '</td>' +
       '<td><input value="' + (log.author || '').replace(/"/g, '&quot;') + '" data-f="author" style="width:90px" placeholder="입력자"></td>' +
       '<td class="row-actions">' +
         '<button class="btn-small inline-save" data-save-log="' + log.id + '">저장</button>' +
@@ -1551,7 +1560,7 @@
 
   function renderInventoryItemTable() {
     document.getElementById('invItemRows').innerHTML =
-      invItemsCache.map(itemRowHtml).join('') || '<tr><td colspan="5">재고 항목 없음</td></tr>';
+      invItemsCache.map(invItemRowHtml).join('') || '<tr><td colspan="5">재고 항목 없음</td></tr>';
     bindInventoryItemRowEvents();
   }
 
@@ -1629,7 +1638,7 @@
       b.addEventListener('click', function () {
         var id = b.getAttribute('data-edit-inv');
         var item = invItemsCache.find(function (x) { return x.id === id; });
-        document.querySelector('#invItemRows tr[data-id="' + id + '"]').outerHTML = itemEditRowHtml(item);
+        document.querySelector('#invItemRows tr[data-id="' + id + '"]').outerHTML = invItemEditRowHtml(item);
         var newTr = document.querySelector('#invItemRows tr[data-id="' + id + '"]');
         bindUnitSelectToggle(newTr.querySelector('[data-f="unit"]'), newTr.querySelector('[data-f="unitCustom"]'));
         bindInventoryItemRowEvents();
@@ -1646,12 +1655,13 @@
         var type = tr.querySelector('[data-f="type"]').value;
         var unitSel = tr.querySelector('[data-f="unit"]').value;
         var unit = (unitSel === 'custom' ? tr.querySelector('[data-f="unitCustom"]').value.trim() : unitSel) || '개';
+        var packSize = tr.querySelector('[data-f="packSize"]').value.trim();
         var minQty = parseFloat(tr.querySelector('[data-f="minQty"]').value);
         if (!name) return alert('이름을 입력해주세요');
         await fetch('/api/admin/inventory/items/' + id, {
           method: 'PUT',
           headers: { 'Content-Type': 'application/json' },
-          body: JSON.stringify({ name: name, type: type, unit: unit, minQty: Number.isNaN(minQty) ? 0 : minQty })
+          body: JSON.stringify({ name: name, type: type, unit: unit, packSize: packSize, minQty: Number.isNaN(minQty) ? 0 : minQty })
         });
         loadInventory();
       });
@@ -1685,17 +1695,19 @@
     var type = document.getElementById('invType').value;
     var unitSel = document.getElementById('invUnit').value;
     var unit = (unitSel === 'custom' ? document.getElementById('invUnitCustom').value.trim() : unitSel) || '개';
+    var packSize = document.getElementById('invPackSize').value.trim();
     var minQty = parseFloat(document.getElementById('invMinQty').value);
     if (!name) return alert('이름을 입력해주세요');
     await fetch('/api/admin/inventory/items', {
       method: 'POST',
       headers: { 'Content-Type': 'application/json' },
-      body: JSON.stringify({ name: name, type: type, unit: unit, minQty: Number.isNaN(minQty) ? 0 : minQty })
+      body: JSON.stringify({ name: name, type: type, unit: unit, packSize: packSize, minQty: Number.isNaN(minQty) ? 0 : minQty })
     });
     document.getElementById('invName').value = '';
     document.getElementById('invUnit').value = '개';
     document.getElementById('invUnitCustom').value = '';
     document.getElementById('invUnitCustom').style.display = 'none';
+    document.getElementById('invPackSize').value = '';
     document.getElementById('invMinQty').value = '';
     document.getElementById('invType').value = 'count';
     loadInventory();

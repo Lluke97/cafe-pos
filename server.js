@@ -392,13 +392,20 @@ app.get('/api/admin/inventory/items', (req, res) => res.json(db.getInventoryItem
 const INVENTORY_TYPES = ['count', 'request'];
 
 app.post('/api/admin/inventory/items', (req, res) => {
-  const { name, unit, minQty, type } = req.body || {};
+  const { name, unit, packSize, minQty, type } = req.body || {};
   if (!name) return res.status(400).json({ error: 'name is required' });
   if (type !== undefined && !INVENTORY_TYPES.includes(type)) {
     return res.status(400).json({ error: `type must be one of ${INVENTORY_TYPES.join('|')}` });
   }
   const items = db.getInventoryItems();
-  const item = { id: uid(), name, unit: unit || '개', minQty: typeof minQty === 'number' ? minQty : 0, type: type || 'count' };
+  const item = {
+    id: uid(),
+    name,
+    unit: unit || '개',
+    packSize: typeof packSize === 'string' ? packSize.trim() : '',
+    minQty: typeof minQty === 'number' ? minQty : 0,
+    type: type || 'count'
+  };
   items.push(item);
   db.saveInventoryItems(items);
   res.status(201).json(item);
@@ -408,12 +415,13 @@ app.put('/api/admin/inventory/items/:id', (req, res) => {
   const items = db.getInventoryItems();
   const idx = items.findIndex((i) => i.id === req.params.id);
   if (idx === -1) return res.status(404).json({ error: 'not found' });
-  const { name, unit, minQty, type } = req.body || {};
+  const { name, unit, packSize, minQty, type } = req.body || {};
   if (type !== undefined && !INVENTORY_TYPES.includes(type)) {
     return res.status(400).json({ error: `type must be one of ${INVENTORY_TYPES.join('|')}` });
   }
   if (name !== undefined) items[idx].name = name;
   if (unit !== undefined) items[idx].unit = unit;
+  if (packSize !== undefined) items[idx].packSize = typeof packSize === 'string' ? packSize.trim() : '';
   if (minQty !== undefined) items[idx].minQty = minQty;
   if (type !== undefined) items[idx].type = type;
   db.saveInventoryItems(items);
