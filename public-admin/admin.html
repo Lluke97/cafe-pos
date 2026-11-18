@@ -1501,8 +1501,23 @@
       '<td>' + (item ? item.name : log.itemId) + '</td>' +
       '<td>' + log.qty + (item ? item.unit : '') + '</td>' +
       '<td>' + (log.author || '-') + '</td>' +
-      '<td class="row-actions"><button class="btn-small btn-danger" data-del-log="' + log.id + '">삭제</button></td>' +
-      '</tr>';
+      '<td class="row-actions">' +
+        '<button class="btn-small" data-edit-log="' + log.id + '">수정</button>' +
+        '<button class="btn-small btn-danger" data-del-log="' + log.id + '">삭제</button>' +
+      '</td></tr>';
+  }
+
+  function logEditRowHtml(log) {
+    var item = invItemsCache.find(function (i) { return i.id === log.itemId; });
+    return '<tr data-id="' + log.id + '" class="menu-edit-row">' +
+      '<td><input type="date" value="' + log.date + '" data-f="date" style="width:120px"></td>' +
+      '<td>' + (item ? item.name : log.itemId) + '</td>' +
+      '<td><input type="number" step="0.01" value="' + log.qty + '" data-f="qty" style="width:80px">' + (item ? item.unit : '') + '</td>' +
+      '<td><input value="' + (log.author || '').replace(/"/g, '&quot;') + '" data-f="author" style="width:90px" placeholder="입력자"></td>' +
+      '<td class="row-actions">' +
+        '<button class="btn-small inline-save" data-save-log="' + log.id + '">저장</button>' +
+        '<button class="btn-small" data-cancel-log="' + log.id + '">취소</button>' +
+      '</td></tr>';
   }
 
   function requestRowHtml(r) {
@@ -1544,6 +1559,38 @@
     var recent = invLogsCache.slice().sort(function (a, b) { return a.date < b.date ? 1 : -1; }).slice(0, 30);
     document.getElementById('invLogRows').innerHTML =
       recent.map(logRowHtml).join('') || '<tr><td colspan="5">재고 기록 없음</td></tr>';
+    bindInventoryLogRowEvents();
+  }
+
+  function bindInventoryLogRowEvents() {
+    document.querySelectorAll('#invLogRows button[data-edit-log]').forEach(function (b) {
+      b.addEventListener('click', function () {
+        var id = b.getAttribute('data-edit-log');
+        var log = invLogsCache.find(function (x) { return x.id === id; });
+        document.querySelector('#invLogRows tr[data-id="' + id + '"]').outerHTML = logEditRowHtml(log);
+        bindInventoryLogRowEvents();
+      });
+    });
+    document.querySelectorAll('#invLogRows button[data-cancel-log]').forEach(function (b) {
+      b.addEventListener('click', renderInventoryLogTable);
+    });
+    document.querySelectorAll('#invLogRows button[data-save-log]').forEach(function (b) {
+      b.addEventListener('click', async function () {
+        var id = b.getAttribute('data-save-log');
+        var tr = document.querySelector('#invLogRows tr[data-id="' + id + '"]');
+        var date = tr.querySelector('[data-f="date"]').value;
+        var qty = parseFloat(tr.querySelector('[data-f="qty"]').value);
+        var author = tr.querySelector('[data-f="author"]').value.trim();
+        if (!date) return alert('날짜를 입력해주세요');
+        if (Number.isNaN(qty)) return alert('수량을 입력해주세요');
+        await fetch('/api/admin/inventory/logs/' + id, {
+          method: 'PUT',
+          headers: { 'Content-Type': 'application/json' },
+          body: JSON.stringify({ date: date, qty: qty, author: author })
+        });
+        loadInventory();
+      });
+    });
     document.querySelectorAll('#invLogRows button[data-del-log]').forEach(function (b) {
       b.addEventListener('click', async function () {
         if (!confirm('이 재고 기록을 삭제할까요?')) return;

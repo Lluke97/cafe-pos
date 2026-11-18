@@ -467,6 +467,22 @@ app.post('/api/admin/inventory/logs', (req, res) => {
   res.json({ ok: true, saved });
 });
 
+app.put('/api/admin/inventory/logs/:id', (req, res) => {
+  const logs = db.getInventoryLogs();
+  const idx = logs.findIndex((l) => l.id === req.params.id);
+  if (idx === -1) return res.status(404).json({ error: 'not found' });
+  const { qty, date, author } = req.body || {};
+  if (qty !== undefined) {
+    if (typeof qty !== 'number' || Number.isNaN(qty)) return res.status(400).json({ error: 'qty must be a number' });
+    logs[idx].qty = qty;
+  }
+  if (date !== undefined) logs[idx].date = date;
+  if (author !== undefined) logs[idx].author = author;
+  logs[idx].updatedAt = new Date().toISOString();
+  db.saveInventoryLogs(logs);
+  res.json(logs[idx]);
+});
+
 app.delete('/api/admin/inventory/logs/:id', (req, res) => {
   const logs = db.getInventoryLogs();
   const next = logs.filter((l) => l.id !== req.params.id);
