@@ -43,7 +43,10 @@ input, select, textarea { font-size: 16px; }
 header {
   position: sticky; top: 0; z-index: 5;
   background: var(--accent); color: var(--accent-contrast);
-  padding: calc(14px + env(safe-area-inset-top, 0px)) 18px 14px;
+  /* 상태바를 가리지 않기 위한 safe-area-inset-top은 그대로 두고, 그 외의
+     여백(위 14px→6px, 아래 14px→8px)만 줄여서 주황색 바 자체의 높이를
+     낮춤 — 휴대폰에서 메뉴 그리드가 쓸 수 있는 공간을 더 확보하기 위함. */
+  padding: calc(6px + env(safe-area-inset-top, 0px)) 18px 8px;
   display: flex; align-items: baseline; justify-content: space-between;
 }
 header h1 {
@@ -146,6 +149,7 @@ header span { font-size: 12px; opacity: .85; }
 .stepper .qty { min-width: 20px; text-align: center; font-size: 15px; font-variant-numeric: tabular-nums; }
 
 .ticket-foot { padding: 12px 16px calc(14px + env(safe-area-inset-bottom, 0px)); border-top: 1px solid var(--border); }
+
 .sum-row { display: flex; justify-content: space-between; font-size: 13px; color: var(--text-muted); padding: 2px 0; }
 .sum-row.total { font-size: 18px; font-weight: 700; color: var(--text); margin-top: 4px; }
 
@@ -169,6 +173,17 @@ header span { font-size: 12px; opacity: .85; }
 .btn-primary.active { opacity: 1; }
 .btn-primary:disabled { pointer-events: none; }
 
+@media (max-width: 759px) {
+  /* 휴대폰 폭에서는 메뉴 그리드와 공간을 나눠 써야 해서, 주문 패널의
+     위아래 여백도 조금 줄여 그리드 타일이 너무 작아지지 않게 함.
+     아이패드(>=760px)는 여유가 있어서 그대로 둠. */
+  .ticket-head { padding: 10px 20px 8px; }
+  .ticket-foot { padding: 8px 16px calc(8px + env(safe-area-inset-bottom, 0px)); }
+  .pay-row { margin: 6px 0; }
+  .pay-chip { padding: 9px 8px; }
+  .action-row { margin-top: 10px; padding-top: 8px; }
+}
+
 .toast {
   margin-top: 10px; padding: 8px 10px; border-radius: 8px; background: var(--ok); color: #fff;
   font-size: 12px; text-align: center;
@@ -176,9 +191,9 @@ header span { font-size: 12px; opacity: .85; }
 .toast.error { background: var(--danger); }
 
 /* ---- top-level tabs on the till screen: 새 주문 / 오늘 주문 ---- */
-.main-tabs { display: flex; gap: 8px; padding: 12px 14px 0; }
+.main-tabs { display: flex; gap: 8px; padding: 7px 14px 0; }
 .main-tab {
-  padding: 9px 16px; border-radius: 999px; border: 1px solid var(--border);
+  padding: 7px 16px; border-radius: 999px; border: 1px solid var(--border);
   background: var(--surface); font-size: 13px; font-weight: 700; cursor: pointer;
   -webkit-tap-highlight-color: transparent; color: var(--text-muted);
 }
