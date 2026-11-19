@@ -35,13 +35,23 @@ body {
   padding-top: env(safe-area-inset-top, 0px);
   padding-bottom: env(safe-area-inset-bottom, 0px);
 }
+/* 16px 미만인 입력창에 iOS Safari가 포커스되면 화면을 자동으로 확대해버려서
+   ("입력창 틀어짐"의 주 원인) 모든 입력 요소의 기본 글자 크기를 16px로
+   깔아둔다. 더 구체적인 선택자(.field input 등)가 이걸 다시 14~15px로
+   낮추고 있던 곳들은 아래에서 따로 16px로 올려준다. */
+input, select, textarea { font-size: 16px; }
 header {
   position: sticky; top: 0; z-index: 5;
   background: var(--accent); color: var(--accent-contrast);
   padding: calc(14px + env(safe-area-inset-top, 0px)) 18px 14px;
   display: flex; align-items: baseline; justify-content: space-between;
+  /* 좁은 화면에서 .header-right 아이콘들이 많아지면(오프라인 배지 등) 제목이
+     들어갈 자리가 모자라져서, 제목 안에서 "카페"가 "카"/"페"로 쪼개져
+     줄바꿈되던 문제 — 제목은 절대 줄바꿈하지 않고, 대신 모자라면 아이콘
+     줄이 통째로 다음 줄로 내려가게 한다. */
+  flex-wrap: wrap; row-gap: 6px;
 }
-header h1 { margin: 0; font-size: 18px; font-weight: 700; }
+header h1 { margin: 0; font-size: 18px; font-weight: 700; white-space: nowrap; }
 header span { font-size: 12px; opacity: .85; }
 
 .layout { display: flex; flex-direction: column; min-height: 100%; }
@@ -231,7 +241,7 @@ header span { font-size: 12px; opacity: .85; }
 .field label { display: block; font-size: 12px; color: var(--text-muted); margin-bottom: 6px; }
 .field select, .field input, .field textarea {
   width: 100%; padding: 10px 12px; border-radius: 10px; border: 1px solid var(--border);
-  background: var(--surface-2); color: var(--text); font-size: 14px; font-family: inherit;
+  background: var(--surface-2); color: var(--text); font-size: 16px; font-family: inherit;
 }
 .field textarea { resize: vertical; min-height: 60px; }
 .chip-group { display: flex; gap: 8px; flex-wrap: wrap; }
@@ -297,9 +307,9 @@ table.admin-table th { color: var(--text-muted); font-weight: 600; font-size: 12
 /* ---------- Cash-counting calculator (admin settlement) ---------- */
 .cash-count-row { display: flex; align-items: center; gap: 8px; padding: 4px 0; }
 .cash-count-row .label { flex: 1; font-size: 14px; }
-.cash-count-qty { padding: 8px; font-size: 15px; border-radius: 8px; border: 1px solid var(--border); background: var(--surface); color: var(--text); text-align: center; }
+.cash-count-qty { padding: 8px; font-size: 16px; border-radius: 8px; border: 1px solid var(--border); background: var(--surface); color: var(--text); text-align: center; }
 .cash-count-subtotal { width: 72px; text-align: right; font-size: 13px; color: var(--text-muted); }
-.cash-count-amount { width: 110px; padding: 8px; font-size: 15px; border-radius: 8px; border: 1px solid var(--border); background: var(--surface); color: var(--text); text-align: right; }
+.cash-count-amount { width: 110px; padding: 8px; font-size: 16px; border-radius: 8px; border: 1px solid var(--border); background: var(--surface); color: var(--text); text-align: right; }
 
 /* ---------- Plain arithmetic calculator (admin cash-count tab) ---------- */
 .calc-display {
