@@ -45,14 +45,19 @@ header {
   background: var(--accent); color: var(--accent-contrast);
   padding: calc(14px + env(safe-area-inset-top, 0px)) 18px 14px;
   display: flex; align-items: baseline; justify-content: space-between;
-  /* 좁은 화면에서 .header-right 아이콘들이 많아지면(오프라인 배지 등) 제목이
-     들어갈 자리가 모자라져서, 제목 안에서 "카페"가 "카"/"페"로 쪼개져
-     줄바꿈되던 문제 — 제목은 절대 줄바꿈하지 않고, 대신 모자라면 아이콘
-     줄이 통째로 다음 줄로 내려가게 한다. */
-  flex-wrap: wrap; row-gap: 6px;
 }
-header h1 { margin: 0; font-size: 18px; font-weight: 700; white-space: nowrap; }
+header h1 {
+  margin: 0; font-size: 18px; font-weight: 700;
+  white-space: nowrap; overflow: hidden; text-overflow: ellipsis; min-width: 0;
+}
 header span { font-size: 12px; opacity: .85; }
+/* 좁은 화면에서는 .header-right 아이콘이 많아지면(오프라인 배지 등) 제목이
+   들어갈 자리가 모자라져서 "카페"가 "카"/"페"로 쪼개져 줄바꿈되던 문제가
+   있었음. 줄을 두 줄로 내리면 스크롤이 생겨 오히려 불편하므로, 대신 자리를
+   덜 차지하는 기기 이름(#deviceLabel)을 좁은 화면에서는 숨긴다. */
+@media (max-width: 420px) {
+  #deviceLabel { display: none; }
+}
 
 .layout { display: flex; flex-direction: column; min-height: 100%; }
 @media (min-width: 760px) { .layout { flex-direction: row; align-items: flex-start; } }
