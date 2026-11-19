@@ -230,9 +230,12 @@
     el.textContent = window.cafeTime.hm(d);
   }
 
-  // Picks the largest square tile size + column count that fits every menu
-  // item in the visible area with no scrolling, so a bigger menu shrinks
-  // the buttons instead of overflowing.
+  // Picks a tile size based on available WIDTH only, kept between a minimum
+  // (always comfortably tappable) and a maximum (doesn't balloon on wide
+  // screens). Used to size to the visible height without scrolling, but
+  // that shrank tiles too small to tap comfortably on short screens — tiles
+  // staying a good tap size matters more than avoiding scroll, so .left
+  // (and #view-order) just scroll if the grid doesn't fully fit.
   function fitMenuGrid() {
     var left = document.querySelector('#view-order .left');
     var grid = document.getElementById('grid');
@@ -240,31 +243,17 @@
     if (!left || !grid || !n) return;
     var cs = getComputedStyle(left);
     var W = left.clientWidth - (parseFloat(cs.paddingLeft) || 0) - (parseFloat(cs.paddingRight) || 0);
-    var H = left.clientHeight - (parseFloat(cs.paddingTop) || 0) - (parseFloat(cs.paddingBottom) || 0);
     var gap = 10;
-    var bestCols = 1, bestTile = 0;
-    for (var cols = 1; cols <= n; cols++) {
-      var tileW = (W - gap * (cols - 1)) / cols;
-      if (tileW <= 0) continue;
-      var rows = Math.ceil(n / cols);
-      var totalH = rows * tileW + gap * (rows - 1);
-      if (totalH <= H && tileW > bestTile) { bestTile = tileW; bestCols = cols; }
-    }
+    var MIN_TILE_PX = 110; // comfortable minimum tap target
     var MAX_TILE_PX = 190; // keep tiles from ballooning when there's lots of spare room
-    if (bestTile > MAX_TILE_PX) {
-      // Not just a font-size cap — recompute columns so tiles are actually
-      // this size, not just stretched squares with small text floating in them.
-      bestCols = Math.max(1, Math.ceil((W + gap) / (MAX_TILE_PX + gap)));
-      bestTile = (W - gap * (bestCols - 1)) / bestCols;
+    var cols = Math.max(1, Math.min(n, Math.floor((W + gap) / (MIN_TILE_PX + gap)) || 1));
+    var tile = (W - gap * (cols - 1)) / cols;
+    if (tile > MAX_TILE_PX) {
+      cols = Math.max(1, Math.ceil((W + gap) / (MAX_TILE_PX + gap)));
+      tile = (W - gap * (cols - 1)) / cols;
     }
-    if (bestTile === 0) {
-      // Too many items for this screen even at a sane minimum — fall back
-      // to a reasonable column count; .left can still scroll as a last resort.
-      bestCols = Math.max(2, Math.floor(W / 90)) || 2;
-      bestTile = (W - gap * (bestCols - 1)) / bestCols;
-    }
-    grid.style.setProperty('--cols', bestCols);
-    grid.style.setProperty('--tile-px', bestTile + 'px');
+    grid.style.setProperty('--cols', cols);
+    grid.style.setProperty('--tile-px', tile + 'px');
   }
 
   var fitMenuGridRaf = null;
