@@ -65,19 +65,24 @@ header span { font-size: 12px; opacity: .85; }
 .layout { display: flex; flex-direction: column; min-height: 100%; }
 @media (min-width: 760px) { .layout { flex-direction: row; align-items: flex-start; } }
 
-/* min-height:0 is the real fix for the phone-width scroll bug: .layout is a
-   COLUMN flex container on mobile, and flex items default to min-height:auto
-   — meaning .left refuses to shrink below its own content's natural height
-   (the menu grid), even though flex:1 is supposed to size it down to fit
-   whatever space .right leaves. That forced .layout to grow past its fixed
-   box and the overflow leaked out as scroll — happened with or without a
-   browser toolbar (confirmed in the standalone home-screen app too), and
-   iPad was fine only because it takes the >=760px row-layout branch below,
-   which already gives .left an explicit height instead of relying on this
-   flex:1 share. min-height:0 lets .left actually take only its fair share,
-   so fitMenuGrid() (which measures .left's real height) sizes tiles to fit
-   instead of overflowing. */
-.left { flex: 1; min-width: 0; min-height: 0; padding: 14px 14px 20px; }
+/* On mobile .left is NOT flex:1 (fill-remaining-space) — it's sized to its
+   own content (the menu grid) instead. Tiles are now sized to be big enough
+   to tap (fitMenuGrid, width-based) rather than shrunk to fit the screen,
+   so with flex:1 + min-height:0 .left would be squeezed smaller than the
+   grid actually needs, and the grid would visually spill out past .left's
+   own (too-short) box, overlapping .right which starts right after it in
+   normal flow — that's the "cart rows drawn on top of the menu tiles" bug.
+   Sizing .left to its content means it's always exactly as tall as the
+   grid, .right always starts right below with no overlap, and the whole
+   #view-order scrolls as one block if the total doesn't fit (which is
+   fine — see the >=760px override below for why iPad doesn't need this). */
+.left { min-width: 0; padding: 14px 14px 20px; }
+@media (min-width: 760px) {
+  /* Wide layout DOES want .left to fill the remaining row height and
+     scroll on its own (see #view-order rules further down), so flex:1
+     only applies there. */
+  .left { flex: 1; min-height: 0; }
+}
 .right { width: 100%; background: var(--surface); border-top: 1px solid var(--border); }
 @media (min-width: 760px) {
   .right {
