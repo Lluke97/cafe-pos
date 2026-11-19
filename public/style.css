@@ -182,7 +182,14 @@ header span { font-size: 12px; opacity: .85; }
    off-screen). A real flex layout needs no such number and can't drift. */
 body.till-shell {
   display: flex; flex-direction: column;
-  height: 100vh; height: 100dvh; overflow: hidden;
+  /* 100vh는 iOS Safari에서 주소창/하단 툴바가 보였다 숨었다 하는 것과
+     무관하게 "화면이 꽉 찼을 때" 기준 고정값이라, 실제 보이는 높이보다
+     커서 그만큼 빈 공간이 생기고 그 빈 공간을 보려고 스크롤해야 하는
+     원인이 됨. 100dvh가 이를 해결하지만 구형 iOS는 지원 안 할 수 있어서,
+     pos.html에서 window.innerHeight로 직접 계산해 넣는 --vh를 최종값으로
+     사용 — 어떤 iOS 버전에서도 실제 보이는 높이에 정확히 맞춰진다. */
+  height: 100vh; height: 100dvh; height: calc(var(--vh, 1vh) * 100);
+  overflow: hidden;
 }
 body.till-shell > header, body.till-shell > .main-tabs { flex: 0 0 auto; }
 body.till-shell > #view-order, body.till-shell > #view-history {
