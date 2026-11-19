@@ -62,7 +62,19 @@ header span { font-size: 12px; opacity: .85; }
 .layout { display: flex; flex-direction: column; min-height: 100%; }
 @media (min-width: 760px) { .layout { flex-direction: row; align-items: flex-start; } }
 
-.left { flex: 1; min-width: 0; padding: 14px 14px 20px; }
+/* min-height:0 is the real fix for the phone-width scroll bug: .layout is a
+   COLUMN flex container on mobile, and flex items default to min-height:auto
+   — meaning .left refuses to shrink below its own content's natural height
+   (the menu grid), even though flex:1 is supposed to size it down to fit
+   whatever space .right leaves. That forced .layout to grow past its fixed
+   box and the overflow leaked out as scroll — happened with or without a
+   browser toolbar (confirmed in the standalone home-screen app too), and
+   iPad was fine only because it takes the >=760px row-layout branch below,
+   which already gives .left an explicit height instead of relying on this
+   flex:1 share. min-height:0 lets .left actually take only its fair share,
+   so fitMenuGrid() (which measures .left's real height) sizes tiles to fit
+   instead of overflowing. */
+.left { flex: 1; min-width: 0; min-height: 0; padding: 14px 14px 20px; }
 .right { width: 100%; background: var(--surface); border-top: 1px solid var(--border); }
 @media (min-width: 760px) {
   .right {
