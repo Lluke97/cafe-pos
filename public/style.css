@@ -182,13 +182,14 @@ header span { font-size: 12px; opacity: .85; }
    off-screen). A real flex layout needs no such number and can't drift. */
 body.till-shell {
   display: flex; flex-direction: column;
-  /* 100vh는 iOS Safari에서 주소창/하단 툴바가 보였다 숨었다 하는 것과
-     무관하게 "화면이 꽉 찼을 때" 기준 고정값이라, 실제 보이는 높이보다
-     커서 그만큼 빈 공간이 생기고 그 빈 공간을 보려고 스크롤해야 하는
-     원인이 됨. 100dvh가 이를 해결하지만 구형 iOS는 지원 안 할 수 있어서,
-     pos.html에서 window.innerHeight로 직접 계산해 넣는 --vh를 최종값으로
-     사용 — 어떤 iOS 버전에서도 실제 보이는 높이에 정확히 맞춰진다. */
-  height: 100vh; height: 100dvh; height: calc(var(--vh, 1vh) * 100);
+  /* 100vh/100dvh는 iOS Safari 주소창이 보였다 숨었다 할 때마다 값이
+     같이 움직여서, JS로 window.innerHeight를 재서 넣는 방식은 그 움직임을
+     그대로 따라가다가 화면이 계속 커지는 것처럼 보이는 문제가 있었음
+     (resize가 또 resize를 유발하는 것처럼 요동침). 100svh(small viewport
+     height)는 툴바가 "펼쳐져 있을 때" 기준의 가장 작은, 절대 안전한
+     값으로 고정돼 있어서 툴바 상태가 바뀌어도 전혀 움직이지 않음 — 그래서
+     스크롤도 안 생기고 요동치지도 않음. */
+  height: 100vh; height: 100svh;
   overflow: hidden;
 }
 body.till-shell > header, body.till-shell > .main-tabs { flex: 0 0 auto; }

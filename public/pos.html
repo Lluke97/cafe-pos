@@ -267,19 +267,8 @@
     grid.style.setProperty('--tile-px', bestTile + 'px');
   }
 
-  // iOS Safari의 100vh는 주소창/하단 툴바가 보였다 숨었다 해도 바뀌지 않는
-  // "화면 전체" 기준값이라, 실제 보이는 높이보다 커서 아래쪽에 안 보이는
-  // 빈 공간이 생기고 그걸 보려고 스크롤해야 하는 원인이 됨.
-  // window.innerHeight(= 지금 실제로 보이는 높이)로 --vh를 계산해 넣어서
-  // body.till-shell의 높이가 항상 실제 화면에 정확히 맞게 함.
-  function setRealVh() {
-    document.documentElement.style.setProperty('--vh', (window.innerHeight * 0.01) + 'px');
-  }
-  setRealVh();
-
   var fitMenuGridRaf = null;
   function scheduleFitMenuGrid() {
-    setRealVh();
     if (fitMenuGridRaf) cancelAnimationFrame(fitMenuGridRaf);
     fitMenuGridRaf = requestAnimationFrame(fitMenuGrid);
   }
