@@ -40,12 +40,14 @@ function notifyYouthBudget(record) {
       });
       const req = https.request(target, {
         method: 'POST',
-        headers: { 'Content-Type': 'application/json', 'Content-Length': Buffer.byteLength(payload), 'X-Webhook-Secret': secret }
+        headers: { 'Content-Type': 'application/json', 'Content-Length': Buffer.byteLength(payload), 'X-Webhook-Secret': secret },
+        timeout: 10000 // youth-budget unreachable/hung shouldn't hang this request forever
       }, (res) => {
         res.resume();
         if (res.statusCode >= 200 && res.statusCode < 300) resolve();
         else reject(new Error('youth-budget webhook returned ' + res.statusCode));
       });
+      req.on('timeout', () => req.destroy(new Error('youth-budget webhook request timed out')));
       req.on('error', (e) => reject(e));
       req.write(payload);
       req.end();
@@ -86,7 +88,19 @@ const LOCKOUT_MS = 15 * 60 * 1000;
 const failedAttempts = new Map(); // ip -> { count, lockedUntil }
 
 function clientIp(req) {
-  return (req.headers['x-forwarded-for'] || '').split(',')[0].trim() || req.socket.remoteAddress || 'unknown';
+  // X-Forwarded-For is "client, proxy1, proxy2, ..." where each hop APPENDS
+  // the IP it saw — so the LEFTMOST entry is whatever the original caller
+  // claimed (an attacker can send their own fake X-Forwarded-For header),
+  // while the RIGHTMOST entry is the one Railway's own trusted edge appended
+  // from the real TCP connection, and can't be spoofed by the caller. Using
+  // the leftmost entry let an attacker rotate a fake IP per request to dodge
+  // the brute-force lockout below entirely.
+  const header = req.headers['x-forwarded-for'];
+  if (header) {
+    const parts = header.split(',').map((p) => p.trim()).filter(Boolean);
+    if (parts.length) return parts[parts.length - 1];
+  }
+  return req.socket.remoteAddress || 'unknown';
 }
 
 function requireAdmin(req, res, next) {
@@ -124,6 +138,18 @@ function requireAdmin(req, res, next) {
 
 function uid() {
   return Date.now().toString(36) + Math.random().toString(36).slice(2, 8);
+}
+
+// Free-text fields (memo/author/device/cashier/item names/...) come in from
+// endpoints nobody has to log in to call (the till, the expense/inventory
+// entry screens). They're rendered later in the admin page, so they're
+// trimmed and length-capped here (defense in depth — the real XSS defense
+// is escaping on the way OUT, in admin.html) and control characters are
+// stripped so a stray byte can't do anything odd client-side.
+function sanitizeText(s, maxLen) {
+  if (typeof s !== 'string') return '';
+  // eslint-disable-next-line no-control-regex
+  return s.replace(/[\u0000-\u001f\u007f]/g, '').trim().slice(0, maxLen);
 }
 
 // The business runs on Malaysia time; "today" and every order's "day" are
@@ -206,11 +232,25 @@ app.get('/api/orders', (req, res) => {
 // instead of creating a duplicate.
 app.post('/api/orders', (req, res) => {
   const { items, total, pay, cashier, device, clientId } = req.body || {};
-  if (!Array.isArray(items) || items.length === 0) {
-    return res.status(400).json({ error: 'items is required' });
+  if (!Array.isArray(items) || items.length === 0 || items.length > 50) {
+    return res.status(400).json({ error: 'items must be a non-empty array of at most 50 entries' });
   }
-  if (typeof total !== 'number' || total <= 0) {
+  for (const it of items) {
+    if (!it || typeof it.name !== 'string' || !it.name.trim()) {
+      return res.status(400).json({ error: 'each item needs a name' });
+    }
+    if (typeof it.qty !== 'number' || !Number.isFinite(it.qty) || it.qty <= 0 || it.qty > 1000) {
+      return res.status(400).json({ error: 'each item needs a positive qty (<= 1000)' });
+    }
+    if (it.price !== undefined && (typeof it.price !== 'number' || !Number.isFinite(it.price) || it.price < 0 || it.price > 100000)) {
+      return res.status(400).json({ error: 'item price must be a non-negative number (<= 100000) if given' });
+    }
+  }
+  if (typeof total !== 'number' || !Number.isFinite(total) || total <= 0 || total > 1000000) {
     return res.status(400).json({ error: 'total must be a positive number' });
+  }
+  if (pay !== undefined && pay !== null && pay !== '현금' && pay !== '터치앤고') {
+    return res.status(400).json({ error: "pay must be '현금' or '터치앤고' if given" });
   }
   const orders = db.getOrders();
   if (clientId) {
@@ -219,13 +259,17 @@ app.post('/api/orders', (req, res) => {
   }
   const order = {
     id: uid(),
-    clientId: clientId || null,
+    clientId: typeof clientId === 'string' ? clientId.slice(0, 100) : null,
     createdAt: new Date().toISOString(),
-    items,
+    items: items.map((it) => ({
+      name: sanitizeText(it.name, 200),
+      qty: it.qty,
+      price: typeof it.price === 'number' ? it.price : 0
+    })),
     total,
     pay: pay || null,
-    cashier: cashier || null,
-    device: device || null, // which till/device placed this order
+    cashier: sanitizeText(cashier, 100) || null,
+    device: sanitizeText(device, 100) || null, // which till/device placed this order
     status: 'new' // 'new' | 'done' — used by the Brew Board
   };
   orders.push(order);
@@ -260,18 +304,18 @@ app.get('/api/expense-payment-methods', (req, res) => {
 
 app.post('/api/expenses', (req, res) => {
   const { date, category, amount, memo, author, payment } = req.body || {};
-  if (!category || typeof amount !== 'number' || amount <= 0 || !EXPENSE_PAYMENT_METHODS.includes(payment)) {
-    return res.status(400).json({ error: `category, a positive amount, and payment (${EXPENSE_PAYMENT_METHODS.join('|')}) are required` });
+  if (!category || typeof category !== 'string' || typeof amount !== 'number' || !Number.isFinite(amount) || amount <= 0 || amount > 1000000 || !EXPENSE_PAYMENT_METHODS.includes(payment)) {
+    return res.status(400).json({ error: `category, a positive amount (<= 1000000), and payment (${EXPENSE_PAYMENT_METHODS.join('|')}) are required` });
   }
   const entry = {
     id: uid(),
     createdAt: new Date().toISOString(),
     date: date || todayStr(),
-    category, // '원재료' | '운영비' | '기타'
+    category: sanitizeText(category, 50), // '원재료' | '운영비' | '기타'
     amount,
     payment,
-    memo: memo || '',
-    author: author || ''
+    memo: sanitizeText(memo, 300),
+    author: sanitizeText(author, 100)
   };
   const expenses = db.getExpenses();
   expenses.push(entry);
@@ -303,6 +347,8 @@ app.post('/api/inventory/submit', (req, res) => {
   const { date, author, counts, requests, note } = req.body || {};
   const theDate = date || todayStr();
   const items = db.getInventoryItems();
+  const cleanAuthor = sanitizeText(author, 100);
+  const cleanNote = sanitizeText(note, 300);
   let savedCounts = 0;
   let savedRequests = 0;
 
@@ -310,14 +356,14 @@ app.post('/api/inventory/submit', (req, res) => {
     const logs = db.getInventoryLogs();
     const now = new Date().toISOString();
     counts.forEach((e) => {
-      if (!e || typeof e.itemId !== 'string' || !Number.isInteger(e.qty)) return;
+      if (!e || typeof e.itemId !== 'string' || !Number.isInteger(e.qty) || e.qty < 0 || e.qty > 1000000) return;
       const idx = logs.findIndex((l) => l.itemId === e.itemId && l.date === theDate);
       if (idx !== -1) {
         logs[idx].qty = e.qty;
-        logs[idx].author = author || logs[idx].author;
+        logs[idx].author = cleanAuthor || logs[idx].author;
         logs[idx].updatedAt = now;
       } else {
-        logs.push({ id: uid(), itemId: e.itemId, date: theDate, qty: e.qty, author: author || '', note: note || '', createdAt: now });
+        logs.push({ id: uid(), itemId: e.itemId, date: theDate, qty: e.qty, author: cleanAuthor, note: cleanNote, createdAt: now });
       }
       savedCounts++;
     });
@@ -335,9 +381,9 @@ app.post('/api/inventory/submit', (req, res) => {
       const existing = reqList.find((r) => r.itemId === itemId && !r.resolved);
       if (existing) {
         existing.requestedAt = now;
-        existing.requestedBy = author || existing.requestedBy;
+        existing.requestedBy = cleanAuthor || existing.requestedBy;
       } else {
-        reqList.push({ id: uid(), itemId, date: theDate, requestedBy: author || '', note: note || '', resolved: false, requestedAt: now });
+        reqList.push({ id: uid(), itemId, date: theDate, requestedBy: cleanAuthor, note: cleanNote, resolved: false, requestedAt: now });
       }
       savedRequests++;
     });
@@ -599,10 +645,33 @@ app.put('/api/admin/orders/:id', (req, res) => {
   const orders = db.getOrders();
   const idx = orders.findIndex((o) => o.id === req.params.id);
   if (idx === -1) return res.status(404).json({ error: 'not found' });
+
+  // recordedTotalsSince() (the weekly settlement) buckets an order purely by
+  // whether its createdAt falls before or after settings.settlement.at (the
+  // live baseline cutoff). Moving an order's time across that line would
+  // either drop it out of every settlement (if moved from "unsettled" to
+  // already-settled territory) or sweep it into the NEXT settlement a
+  // second time (if moved the other way, since its original time already
+  // got it counted once, frozen into a past settlement's recordedCash/Tng).
+  // Block the edit instead of silently mis-settling sales.
+  if (createdAtIso && createdAtIso !== orders[idx].createdAt) {
+    const settings = db.getSettings();
+    const cutoff = settings.settlement && settings.settlement.at;
+    if (cutoff) {
+      const wasSettled = orders[idx].createdAt <= cutoff;
+      const willBeSettled = createdAtIso <= cutoff;
+      if (wasSettled !== willBeSettled) {
+        return res.status(400).json({
+          error: `이 주문의 시간을 현재 정산 기준점(${cutoff}) 너머로 옮기면 매출이 중복이나 누락으로 집계돼요. 그 경계를 넘지 않는 시간으로만 고칠 수 있어요.`
+        });
+      }
+    }
+  }
+
   orders[idx].pay = pay;
   orders[idx].total = total;
-  orders[idx].items = items.map((it) => ({ name: it.name.trim(), qty: it.qty, price: typeof it.price === 'number' ? it.price : 0 }));
-  orders[idx].device = device || null;
+  orders[idx].items = items.map((it) => ({ name: sanitizeText(it.name, 200), qty: it.qty, price: typeof it.price === 'number' ? it.price : 0 }));
+  orders[idx].device = sanitizeText(device, 100) || null;
   if (createdAtIso) orders[idx].createdAt = createdAtIso;
   db.saveOrders(orders);
   res.json(orders[idx]);
@@ -643,10 +712,10 @@ app.put('/api/admin/expenses/:id', (req, res) => {
   const expenses = db.getExpenses();
   const idx = expenses.findIndex((e) => e.id === req.params.id);
   if (idx === -1) return res.status(404).json({ error: 'not found' });
-  expenses[idx].category = category;
+  expenses[idx].category = sanitizeText(category, 50);
   expenses[idx].amount = amount;
   expenses[idx].payment = payment;
-  expenses[idx].memo = memo || '';
+  expenses[idx].memo = sanitizeText(memo, 300);
   db.saveExpenses(expenses);
   res.json(expenses[idx]);
 });
@@ -851,7 +920,12 @@ app.post('/api/admin/settlement', (req, res) => {
   // day, not this literal click time — so if today's (Monday's) orders have
   // already started coming in, they stay uncounted until the next
   // settlement instead of being swallowed into this one.
-  settings.settlement = { at: beforeOrAt, date: record.date, actualCash, actualTng, actualBank: bankValue };
+  // sourceSettlementId records WHICH settlement record this live baseline
+  // came from, so editing/deleting that exact record later (see PUT/DELETE
+  // below) can tell whether it's still the current baseline. `at` itself is
+  // the business-day cutoff (beforeOrAt), not this record's createdAt, so it
+  // can never be used for that comparison — using it that way was the bug.
+  settings.settlement = { at: beforeOrAt, date: record.date, actualCash, actualTng, actualBank: bankValue, sourceSettlementId: record.id };
   db.saveSettings(settings);
 
   res.status(201).json(record);
@@ -885,7 +959,7 @@ app.post('/api/admin/settlements/:id/send-to-finance', async (req, res) => {
 // first settled are kept as-is (they reflect that moment); only the actual
 // counted amounts and the diff change. If this is the current baseline
 // settlement, the live baseline is updated too so future settlements stay correct.
-app.put('/api/admin/settlements/:id', (req, res) => {
+app.put('/api/admin/settlements/:id', async (req, res) => {
   const { actualCash, actualTng, actualBank } = req.body || {};
   if (typeof actualCash !== 'number' || typeof actualTng !== 'number' || Number.isNaN(actualCash) || Number.isNaN(actualTng)) {
     return res.status(400).json({ error: 'actualCash and actualTng must both be numbers' });
@@ -908,15 +982,37 @@ app.put('/api/admin/settlements/:id', (req, res) => {
   rec.diffTng = actualTng - expectedTng;
   db.saveSettlements(settlements);
 
+  // BUG (fixed): this used to compare settings.settlement.at === rec.createdAt
+  // — but `at` is always the business-day cutoff (beforeOrAt/endOfDayIso),
+  // never a settlement's createdAt, so that check was almost never true and
+  // editing the most recent settlement silently failed to update the live
+  // baseline. The live baseline now carries the id of the settlement it came
+  // from (sourceSettlementId), so this compares like with like.
   const settings = db.getSettings();
-  if (settings.settlement.at === rec.createdAt) {
+  if (settings.settlement && settings.settlement.sourceSettlementId === rec.id) {
     settings.settlement.actualCash = actualCash;
     settings.settlement.actualTng = actualTng;
     if (typeof actualBank === 'number') settings.settlement.actualBank = actualBank;
     db.saveSettings(settings);
   }
-  notifyYouthBudget(rec);
-  res.json(rec);
+
+  // Only push a correction to youth-budget if this settlement had already
+  // been sent there — otherwise an edit to a not-yet-sent settlement would
+  // notify finance out of band, before the owner ever pressed "정산 전송".
+  // Fire this off but never let a webhook failure crash the request or go
+  // unnoticed (it used to be an un-awaited, uncaught call).
+  let financePushError = null;
+  if (rec.sentToFinance) {
+    try {
+      await notifyYouthBudget(rec);
+      rec.sentAt = new Date().toISOString();
+      db.saveSettlements(settlements);
+    } catch (e) {
+      financePushError = e.message;
+      console.error('[cafe-pos] 정산 수정 후 파이낸스 재전송 실패:', e.message);
+    }
+  }
+  res.json(financePushError ? Object.assign({}, rec, { financePushError }) : rec);
 });
 
 // Deleting the current baseline settlement falls back to the next most
@@ -929,11 +1025,19 @@ app.delete('/api/admin/settlements/:id', (req, res) => {
   db.saveSettlements(remaining);
 
   const settings = db.getSettings();
-  if (rec && settings.settlement.at === rec.createdAt) {
+  // Same fix as the PUT handler above: identify "is this the current
+  // baseline settlement" by id (sourceSettlementId), not by comparing `at`
+  // (a business-day cutoff) against `createdAt` (a save timestamp) — those
+  // are never the same value, so this fallback almost never ran before.
+  if (rec && settings.settlement && settings.settlement.sourceSettlementId === rec.id) {
     const sorted = remaining.slice().sort((a, b) => b.createdAt.localeCompare(a.createdAt));
     settings.settlement = sorted.length > 0
-      ? { at: sorted[0].createdAt, date: sorted[0].date, actualCash: sorted[0].actualCash, actualTng: sorted[0].actualTng }
-      : { at: null, date: null, actualCash: 0, actualTng: 0 };
+      // `at` must be the stored business-day cutoff (uptoAt) that settlement
+      // actually used, not its createdAt — using createdAt here would also
+      // move the boundary earlier than it should be, re-exposing orders
+      // already counted in that settlement to being swept into the next one.
+      ? { at: sorted[0].uptoAt || sorted[0].createdAt, date: sorted[0].date, actualCash: sorted[0].actualCash, actualTng: sorted[0].actualTng, actualBank: sorted[0].actualBank || 0, sourceSettlementId: sorted[0].id }
+      : { at: null, date: null, actualCash: 0, actualTng: 0, actualBank: 0, sourceSettlementId: null };
     db.saveSettings(settings);
   }
   res.json({ ok: true });

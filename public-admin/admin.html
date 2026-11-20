@@ -354,6 +354,19 @@
   function fmt(n) {
     return 'RM' + Number(n).toLocaleString('en-MY', { minimumFractionDigits: 2, maximumFractionDigits: 2 });
   }
+  // memo/author/device/item name/... all come from screens nobody has to log
+  // in to use (the till, expense/inventory entry) and are rendered below as
+  // raw HTML — escape before every such insertion so a value like
+  // "<script>..." typed into one of those fields can't run in this
+  // logged-in admin page.
+  function esc(s) {
+    return String(s == null ? '' : s)
+      .replace(/&/g, '&amp;')
+      .replace(/</g, '&lt;')
+      .replace(/>/g, '&gt;')
+      .replace(/"/g, '&quot;')
+      .replace(/'/g, '&#39;');
+  }
   function renderClock() {
     var d = new Date();
     document.getElementById('clock').textContent = window.cafeTime.hm(d);
@@ -993,7 +1006,7 @@
 
   // ---------- Orders (full inline edit: 시간/내역/결제/기기/합계) ----------
   function orderDesc(o) {
-    return o.items.map(function (i) { return i.name + ' x' + i.qty; }).join(', ');
+    return o.items.map(function (i) { return esc(i.name) + ' x' + i.qty; }).join(', ');
   }
 
   // createdAt (UTC ISO) <-> MY_TZ (UTC+8, no DST) wall-clock for a
@@ -1014,7 +1027,7 @@
 
   function itemEditRowHtml(it) {
     return '<div class="item-edit-row">' +
-      '<input type="text" class="item-name" value="' + (it.name || '').replace(/"/g, '&quot;') + '" placeholder="이름">' +
+      '<input type="text" class="item-name" value="' + esc(it.name || '') + '" placeholder="이름">' +
       '<span>x</span><input type="number" class="item-qty" value="' + (it.qty || 1) + '" min="1">' +
       '<span>@</span><input type="number" class="item-price" value="' + (it.price || 0) + '" step="0.01">' +
       '<button type="button" class="btn-small item-remove">✕</button>' +
@@ -1025,8 +1038,8 @@
     return '<tr data-id="' + o.id + '">' +
       '<td>' + window.cafeTime.hms(o.createdAt) + '</td>' +
       '<td>' + orderDesc(o) + '</td>' +
-      '<td>' + (o.pay || '-') + '</td>' +
-      '<td>' + (o.device || '-') + '</td>' +
+      '<td>' + esc(o.pay || '-') + '</td>' +
+      '<td>' + esc(o.device || '-') + '</td>' +
       '<td>' + fmt(o.total) + '</td>' +
       '<td class="row-actions">' +
         '<button class="btn-small" data-edit="' + o.id + '">수정</button>' +
@@ -1043,7 +1056,7 @@
         '<option value="현금"' + (o.pay === '현금' ? ' selected' : '') + '>현금</option>' +
         '<option value="터치앤고"' + (o.pay === '터치앤고' ? ' selected' : '') + '>터치앤고</option>' +
       '</select></td>' +
-      '<td><input type="text" class="order-edit-device" value="' + (o.device || '').replace(/"/g, '&quot;') + '" placeholder="기기"></td>' +
+      '<td><input type="text" class="order-edit-device" value="' + esc(o.device || '') + '" placeholder="기기"></td>' +
       '<td><input type="number" step="0.01" class="order-edit-total" value="' + o.total + '" style="width:80px"><br>' +
         '<button type="button" class="btn-small order-recalc-total">항목 합계로</button></td>' +
       '<td class="row-actions">' +
@@ -1151,8 +1164,8 @@
 
   function expenseRowHtml(e) {
     return '<tr data-id="' + e.id + '">' +
-      '<td>' + e.date + '</td><td>' + e.category + '</td><td>' + (e.payment || '-') + '</td>' +
-      '<td>' + fmt(e.amount) + '</td><td>' + (e.memo || '-') + '</td><td>' + (e.author || '-') + '</td>' +
+      '<td>' + e.date + '</td><td>' + esc(e.category) + '</td><td>' + esc(e.payment || '-') + '</td>' +
+      '<td>' + fmt(e.amount) + '</td><td>' + esc(e.memo || '-') + '</td><td>' + esc(e.author || '-') + '</td>' +
       '<td class="row-actions">' +
         '<button class="btn-small" data-edit="' + e.id + '">수정</button>' +
         '<button class="btn-small btn-danger" data-del="' + e.id + '">삭제</button>' +
@@ -1169,8 +1182,8 @@
         return '<option value="' + p + '"' + (e.payment === p ? ' selected' : '') + '>' + p + '</option>';
       }).join('') + '</select></td>' +
       '<td><input type="number" step="0.01" value="' + e.amount + '" data-f="amount" style="width:80px"></td>' +
-      '<td><input type="text" value="' + (e.memo || '').replace(/"/g, '&quot;') + '" data-f="memo" style="width:100px"></td>' +
-      '<td>' + (e.author || '-') + '</td>' +
+      '<td><input type="text" value="' + esc(e.memo || '') + '" data-f="memo" style="width:100px"></td>' +
+      '<td>' + esc(e.author || '-') + '</td>' +
       '<td class="row-actions">' +
         '<button class="btn-small inline-save" data-save="' + e.id + '">저장</button>' +
         '<button class="btn-small" data-cancel="' + e.id + '">취소</button>' +
@@ -1283,7 +1296,7 @@
         '<button class="btn-small" data-up="' + m.id + '"' + (idx === 0 ? ' disabled' : '') + '>▲</button>' +
         '<button class="btn-small" data-down="' + m.id + '"' + (idx === total - 1 ? ' disabled' : '') + '>▼</button>' +
       '</td>' +
-      '<td>' + m.emoji + '</td><td>' + m.name + '</td><td>' + m.category + '</td><td>' + fmt(m.price) + '</td>' +
+      '<td>' + esc(m.emoji) + '</td><td>' + esc(m.name) + '</td><td>' + esc(m.category) + '</td><td>' + fmt(m.price) + '</td>' +
       '<td class="row-actions">' +
         '<button class="btn-small" data-edit="' + m.id + '">수정</button>' +
         '<button class="btn-small btn-danger" data-del="' + m.id + '">삭제</button>' +
@@ -1507,9 +1520,9 @@
     var item = invItemsCache.find(function (i) { return i.id === log.itemId; });
     return '<tr data-id="' + log.id + '">' +
       '<td>' + log.date + '</td>' +
-      '<td>' + (item ? item.name : log.itemId) + '</td>' +
-      '<td>' + log.qty + ' ' + (item ? invUnitDisplay(item) : '') + '</td>' +
-      '<td>' + (log.author || '-') + '</td>' +
+      '<td>' + esc(item ? item.name : log.itemId) + '</td>' +
+      '<td>' + log.qty + ' ' + esc(item ? invUnitDisplay(item) : '') + '</td>' +
+      '<td>' + esc(log.author || '-') + '</td>' +
       '<td class="row-actions">' +
         '<button class="btn-small" data-edit-log="' + log.id + '">수정</button>' +
         '<button class="btn-small btn-danger" data-del-log="' + log.id + '">삭제</button>' +
@@ -1522,7 +1535,7 @@
       '<td><input type="date" value="' + log.date + '" data-f="date" style="width:120px"></td>' +
       '<td>' + (item ? item.name : log.itemId) + '</td>' +
       '<td><input type="number" step="1" min="0" value="' + log.qty + '" data-f="qty" style="width:80px">' + (item ? invUnitDisplay(item) : '') + '</td>' +
-      '<td><input value="' + (log.author || '').replace(/"/g, '&quot;') + '" data-f="author" style="width:90px" placeholder="입력자"></td>' +
+      '<td><input value="' + esc(log.author || '') + '" data-f="author" style="width:90px" placeholder="입력자"></td>' +
       '<td class="row-actions">' +
         '<button class="btn-small inline-save" data-save-log="' + log.id + '">저장</button>' +
         '<button class="btn-small" data-cancel-log="' + log.id + '">취소</button>' +
@@ -1532,9 +1545,9 @@
   function requestRowHtml(r) {
     var item = invItemsCache.find(function (i) { return i.id === r.itemId; });
     return '<tr data-id="' + r.id + '">' +
-      '<td>' + (item ? item.name : r.itemId) + '</td>' +
+      '<td>' + esc(item ? item.name : r.itemId) + '</td>' +
       '<td>' + r.date + '</td>' +
-      '<td>' + (r.requestedBy || '-') + '</td>' +
+      '<td>' + esc(r.requestedBy || '-') + '</td>' +
       '<td class="row-actions">' +
         '<button class="btn-small" data-resolve-req="' + r.id + '">처리완료</button>' +
         '<button class="btn-small btn-danger" data-del-req="' + r.id + '">삭제</button>' +

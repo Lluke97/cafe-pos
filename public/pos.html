@@ -195,12 +195,18 @@
             body: JSON.stringify(payload)
           });
           if (!res.ok) {
-            // 서버가 거부한 주문(데이터 문제 등)은 재시도해도 똑같이 실패하니
-            // 큐에 남겨두지 않고 버린다 — 계속 막혀있으면 다음 주문도 못 보냄.
-            queue.shift();
-            saveOfflineQueue(queue);
-            updateOfflineBadge();
-            continue;
+            if (res.status >= 400 && res.status < 500) {
+              // 서버가 "이 데이터 자체가 잘못됐다"고 거부한 경우(4xx)만 재시도해도
+              // 똑같이 실패하니 버린다 — 계속 막혀있으면 다음 주문도 못 보냄.
+              queue.shift();
+              saveOfflineQueue(queue);
+              updateOfflineBadge();
+              continue;
+            }
+            // 5xx 등 서버 쪽 일시적 문제는 주문 자체가 잘못된 게 아니므로 버리지
+            // 않고 큐에 남겨 다음 기회에 다시 보낸다 — 여기서 버리면 실제 매출이
+            // 그냥 사라진다.
+            break;
           }
           queue.shift();
           saveOfflineQueue(queue);
