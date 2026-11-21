@@ -116,10 +116,14 @@
     }
     var latest = latestLog(item.id);
     var low = latest ? latest.qty < item.minQty : true;
-    var statusText = latest ? (latest.date + ' 기준 ' + latest.qty + ' ' + unitDisplay(item)) : '기록 없음';
+    // 용량("500g")은 이름 옆에 이미 한 번 보여주고 있어서, 아래 기록 줄에서
+    // 또 "1 500g"처럼 붙여 쓰면 숫자 두 개가 이어져 헷갈린다("1500g"으로
+    // 잘못 읽힐 수 있음). 여기서는 "최근 수량: 1개"처럼 말로 풀어서 수량만
+    // 짚어주고, 용량은 이름 옆 걸로 충분하다.
+    var statusText = latest ? ('최근 수량: ' + latest.qty + '개 · ' + latest.date + ' 기록') : '기록 없음';
     return '<div class="inv-item" data-id="' + item.id + '">' +
       '<div class="top"><span class="name">' + item.name + ' (' + unitDisplay(item) + ')</span>' +
-        '<input type="number" step="1" min="0" data-qty="' + item.id + '" placeholder="수량(' + item.unit + ')">' +
+        '<input type="number" step="1" min="0" data-qty="' + item.id + '" placeholder="개수">' +
       '</div>' +
       '<div class="sub ' + (low ? 'status-low' : '') + '">' + statusText + (low ? ' · 🛒 구매 필요' : '') + '</div>' +
     '</div>';

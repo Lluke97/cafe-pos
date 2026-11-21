@@ -1470,7 +1470,16 @@
         '</tr>';
     }
     var latest = invLatestLog(item.id);
-    var latestText = latest ? (latest.date + ' · ' + latest.qty + ' ' + invUnitDisplay(item)) : '기록 없음';
+    // 예전엔 "2026-11-22 · 1 500g"처럼 날짜·수량·용량을 한 줄에 다 욱여넣어서,
+    // 숫자 두 개(1, 500)가 붙어 보여 "1500g"으로 잘못 읽히기 쉬웠다. 나는
+    // 무슨 뜻인지 알아도 다른 사람 눈엔 헷갈릴 수 있어서, 수량(크게/굵게) ·
+    // 용량(그 옆에 작게, "500g짜리") · 날짜(그 아래 줄, 작고 흐리게) 이렇게
+    // 한눈에 읽히는 순서로 줄을 나눠서 보여준다.
+    var latestCell = latest
+      ? '<div style="font-size:14px; font-weight:700;">' + latest.qty + '개' +
+          '<span style="font-weight:400; color:var(--text-muted); font-size:12px;"> (' + invUnitDisplay(item) + '짜리)</span></div>' +
+        '<div style="font-size:11px; color:var(--text-muted); margin-top:2px;">' + latest.date + ' 기록</div>'
+      : '<span style="font-size:12px; color:var(--text-muted);">기록 없음</span>';
     var low = latest ? latest.qty < item.minQty : true;
     var statusHtml2 = low
       ? '<span style="color:var(--danger, #e06c6c); font-weight:600;">🛒 구매 필요</span>'
@@ -1478,9 +1487,9 @@
     return '<tr data-id="' + item.id + '">' +
       '<td>' + item.name + '</td>' +
       '<td>' + invUnitDisplay(item) + '</td>' +
-      '<td style="font-size:12px; color:var(--text-muted);">' + latestText + '</td>' +
+      '<td>' + latestCell + '</td>' +
       '<td>' + statusHtml2 + '</td>' +
-      '<td><input type="number" step="1" min="0" data-inv-qty="' + item.id + '" placeholder="수량(' + item.unit + ')" style="width:90px"></td>' +
+      '<td><input type="number" step="1" min="0" data-inv-qty="' + item.id + '" placeholder="개수" style="width:90px"></td>' +
       '</tr>';
   }
 
