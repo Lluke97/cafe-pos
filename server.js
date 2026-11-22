@@ -249,8 +249,12 @@ app.post('/api/orders', (req, res) => {
   if (typeof total !== 'number' || !Number.isFinite(total) || total <= 0 || total > 1000000) {
     return res.status(400).json({ error: 'total must be a positive number' });
   }
-  if (pay !== undefined && pay !== null && pay !== '현금' && pay !== '터치앤고') {
-    return res.status(400).json({ error: "pay must be '현금' or '터치앤고' if given" });
+  // 'Free'(목회자/봉사자 등에게 그냥 내주는 무료 주문)는 pos.html에 원래부터
+  // 있던 결제수단 선택지인데, 지난번 입력값 검증을 추가하면서 '현금'/
+  // '터치앤고'만 허용 목록에 넣는 바람에 막혀버렸다 — 무료 주문 제출 시
+  // "pay must be '현금' or '터치앤고'" 오류가 떴던 이유.
+  if (pay !== undefined && pay !== null && pay !== '현금' && pay !== '터치앤고' && pay !== 'Free') {
+    return res.status(400).json({ error: "pay must be '현금', '터치앤고', 'Free' 중 하나여야 합니다 (생략 가능)" });
   }
   const orders = db.getOrders();
   if (clientId) {
