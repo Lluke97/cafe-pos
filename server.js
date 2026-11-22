@@ -215,7 +215,13 @@ function reorderMenu(order) {
 
 // Staff can see today's orders from the till screen itself (read-only, no login).
 app.get('/api/orders', (req, res) => {
-  const limit = Math.min(parseInt(req.query.limit, 10) || 30, 100);
+  // 이 엔드포인트는 항상 하루 치(day)로만 묶어서 조회하니(아래 day 필터)
+  // 상한을 낮게 잡아둘 이유가 없다 — 예전 상한 100(게다가 pos.html은
+  // limit=50만 요청)이 바쁜 날 주문이 50건을 넘기면 "오늘 주문 내역"
+  // 화면의 매출 합계가 가장 오래된 주문 몇 건을 조용히 빠뜨린 채 적게
+  // 보여주는 버그로 이어졌다(예: 실제 58건/RM1,119인데 50건/RM971만
+  // 집계). 작은 카페 하루 주문량을 넉넉히 덮도록 상한을 올린다.
+  const limit = Math.min(parseInt(req.query.limit, 10) || 30, 2000);
   const day = req.query.date || todayStr();
   let orders = db.getOrders().filter((o) => myDateStr(new Date(o.createdAt)) === day);
   orders.sort((a, b) => b.createdAt.localeCompare(a.createdAt));

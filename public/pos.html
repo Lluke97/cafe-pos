@@ -507,7 +507,10 @@
     var body = document.getElementById('recentBody');
     body.innerHTML = '<div class="recent-empty">불러오는 중...</div>';
     try {
-      var res = await fetch('/api/orders?limit=50');
+      // limit=50이면 바쁜 날 주문이 50건을 넘는 순간 가장 오래된 주문들이
+      // 빠진 채로 "오늘 전체 매출"이 적게 집계된다 — 하루 상한을 넉넉히
+      // 잡아서 빠지는 주문이 없게 한다.
+      var res = await fetch('/api/orders?limit=1000');
       var orders = await res.json();
       renderSummary(orders);
       if (orders.length === 0) {
